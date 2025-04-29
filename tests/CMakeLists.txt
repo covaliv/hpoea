@@ -1,0 +1,65 @@
+if (NOT HPOEA_WITH_PAGMO)
+    message(WARNING "HPOEA_WITH_PAGMO is OFF; skipping wrapper tests")
+    return()
+endif ()
+
+add_executable(hpoea_de_wrapper_test de_wrapper_test.cpp)
+target_link_libraries(hpoea_de_wrapper_test PRIVATE hpoea_pagmo hpoea_core)
+target_compile_features(hpoea_de_wrapper_test PRIVATE cxx_std_20)
+add_test(NAME hpoea_de_wrapper_test COMMAND hpoea_de_wrapper_test)
+
+add_executable(hpoea_pso_wrapper_test pso_wrapper_test.cpp)
+target_link_libraries(hpoea_pso_wrapper_test PRIVATE hpoea_pagmo hpoea_core)
+target_compile_features(hpoea_pso_wrapper_test PRIVATE cxx_std_20)
+add_test(NAME hpoea_pso_wrapper_test COMMAND hpoea_pso_wrapper_test)
+
+add_executable(hpoea_sade_wrapper_test sade_wrapper_test.cpp)
+target_link_libraries(hpoea_sade_wrapper_test PRIVATE hpoea_pagmo hpoea_core)
+target_compile_features(hpoea_sade_wrapper_test PRIVATE cxx_std_20)
+add_test(NAME hpoea_sade_wrapper_test COMMAND hpoea_sade_wrapper_test)
+
+add_executable(hpoea_cmaes_hyper_test cmaes_hyper_test.cpp)
+target_link_libraries(hpoea_cmaes_hyper_test PRIVATE hpoea_pagmo hpoea_core)
+target_compile_features(hpoea_cmaes_hyper_test PRIVATE cxx_std_20)
+add_test(NAME hpoea_cmaes_hyper_test COMMAND hpoea_cmaes_hyper_test)
+
+add_executable(hpoea_sa_hyper_test sa_hyper_test.cpp)
+target_link_libraries(hpoea_sa_hyper_test PRIVATE hpoea_pagmo hpoea_core)
+target_compile_features(hpoea_sa_hyper_test PRIVATE cxx_std_20)
+add_test(NAME hpoea_sa_hyper_test COMMAND hpoea_sa_hyper_test)
+
+add_executable(hpoea_pso_hyper_test pso_hyper_test.cpp)
+target_link_libraries(hpoea_pso_hyper_test PRIVATE hpoea_pagmo hpoea_core)
+target_compile_features(hpoea_pso_hyper_test PRIVATE cxx_std_20)
+add_test(NAME hpoea_pso_hyper_test COMMAND hpoea_pso_hyper_test)
+
+add_executable(hpoea_nm_hyper_test nm_hyper_test.cpp)
+target_link_libraries(hpoea_nm_hyper_test PRIVATE hpoea_pagmo hpoea_core)
+target_compile_features(hpoea_nm_hyper_test PRIVATE cxx_std_20)
+add_test(NAME hpoea_nm_hyper_test COMMAND hpoea_nm_hyper_test)
+
+add_executable(hpoea_benchmark_problems_test benchmark_problems_test.cpp)
+target_link_libraries(hpoea_benchmark_problems_test PRIVATE hpoea_core)
+target_compile_features(hpoea_benchmark_problems_test PRIVATE cxx_std_20)
+add_test(NAME hpoea_benchmark_problems_test COMMAND hpoea_benchmark_problems_test)
+
+add_executable(hpoea_parallel_experiment_test parallel_experiment_test.cpp)
+target_link_libraries(hpoea_parallel_experiment_test PRIVATE hpoea_pagmo hpoea_core)
+target_compile_features(hpoea_parallel_experiment_test PRIVATE cxx_std_20)
+add_test(NAME hpoea_parallel_experiment_test COMMAND hpoea_parallel_experiment_test)
+
+add_executable(hpoea_integration_test integration_test.cpp)
+target_link_libraries(hpoea_integration_test PRIVATE hpoea_pagmo hpoea_core)
+target_compile_features(hpoea_integration_test PRIVATE cxx_std_20)
+add_test(NAME hpoea_integration_test COMMAND hpoea_integration_test)
+
+add_executable(hpoea_benchmark_suite benchmark_suite.cpp)
+target_link_libraries(hpoea_benchmark_suite PRIVATE hpoea_pagmo hpoea_core)
+target_compile_features(hpoea_benchmark_suite PRIVATE cxx_std_20)
+add_test(NAME hpoea_benchmark_suite COMMAND hpoea_benchmark_suite)
+
+add_executable(hpoea_correctness_test correctness_test.cpp)
+target_link_libraries(hpoea_correctness_test PRIVATE hpoea_pagmo hpoea_core)
+target_compile_features(hpoea_correctness_test PRIVATE cxx_std_20)
+add_test(NAME hpoea_correctness_test COMMAND hpoea_correctness_test)
+
