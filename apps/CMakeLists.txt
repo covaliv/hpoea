@@ -38,5 +38,17 @@ if (HPOEA_WITH_PAGMO)
     add_executable(06_custom_parameter_space 06_custom_parameter_space.cpp)
     target_link_libraries(06_custom_parameter_space PRIVATE hpoea_pagmo hpoea_core)
     target_compile_features(06_custom_parameter_space PRIVATE cxx_std_20)
+
+    add_executable(07_cmaes_optimization 07_cmaes_optimization.cpp)
+    target_link_libraries(07_cmaes_optimization PRIVATE hpoea_pagmo hpoea_core)
+    target_compile_features(07_cmaes_optimization PRIVATE cxx_std_20)
+
+    add_executable(08_sga_optimization 08_sga_optimization.cpp)
+    target_link_libraries(08_sga_optimization PRIVATE hpoea_pagmo hpoea_core)
+    target_compile_features(08_sga_optimization PRIVATE cxx_std_20)
+
+    add_executable(09_de1220_optimization 09_de1220_optimization.cpp)
+    target_link_libraries(09_de1220_optimization PRIVATE hpoea_pagmo hpoea_core)
+    target_compile_features(09_de1220_optimization PRIVATE cxx_std_20)
 endif ()
 
