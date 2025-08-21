@@ -3,6 +3,9 @@ find_package(Pagmo REQUIRED)
 set(HPOEA_PAGMO_SOURCES
     cmaes_hyper.cpp
     de_algorithm.cpp
+    cmaes_algorithm.cpp
+    sga_algorithm.cpp
+    de1220_algorithm.cpp
     pso_algorithm.cpp
     sade_algorithm.cpp
     sa_hyper.cpp
