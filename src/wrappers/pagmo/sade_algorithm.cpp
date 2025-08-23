@@ -28,6 +28,10 @@ constexpr std::string_view kFamily = "SelfAdaptiveDE";
 constexpr std::string_view kImplementation = "pagmo::sade";
 constexpr std::string_view kVersion = "2.x";
 
+// Note: pagmo::sade implements two self-adaptation variants:
+// - variant_adptv=1: jDE (Brest et al., 2006) - default
+// - variant_adptv=2: iDE (Elsayed et al., 2011)
+
 ParameterSpace make_parameter_space() {
     ParameterSpace space;
 
