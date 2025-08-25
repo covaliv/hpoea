@@ -5,9 +5,14 @@ Modular C++ framework for hyperparameter optimization of evolutionary algorithms
 ## Components
 
 ### Evolutionary Algorithms
-- Differential Evolution (DE)
-- Particle Swarm Optimization (PSO)
-- Self-Adaptive Differential Evolution (SADE)
+- Differential Evolution (DE) - `pagmo::de`
+- Particle Swarm Optimization (PSO) - `pagmo::pso`
+- Self-Adaptive Differential Evolution (SADE) - `pagmo::sade`
+  - Can be configured as jDE (variant_adptv=1, Brest et al.) or iDE (variant_adptv=2, Elsayed et al.)
+  - Defaults to jDE (variant_adptv=1)
+- DE1220 (pDE) - `pagmo::de1220` - Alternative self-adaptive DE variant
+- Simple Genetic Algorithm (SGA) - `pagmo::sga`
+- CMA-ES (also available as an evolutionary algorithm) - `pagmo::cmaes`
 
 ### Hyperparameter Optimizers
 - CMA-ES
@@ -100,5 +105,8 @@ Example programs are located in `apps/` directory:
 - `04_custom_problem.cpp`: custom problem implementation
 - `05_multi_optimizer_comparison.cpp`: comparing multiple hyperparameter optimizers
 - `06_custom_parameter_space.cpp`: custom parameter space definition
+- `07_cmaes_optimization.cpp`: CMA-ES as an evolutionary algorithm
+- `08_sga_optimization.cpp`: Simple Genetic Algorithm usage
+- `09_de1220_optimization.cpp`: DE1220 (pDE) usage - alternative self-adaptive DE variant
 
 See `apps/README.md` for detailed documentation.
