@@ -21,6 +21,9 @@ cmake --build .
 ./build/apps/04_custom_problem
 ./build/apps/05_multi_optimizer_comparison
 ./build/apps/06_custom_parameter_space
+./build/apps/07_cmaes_optimization
+./build/apps/08_sga_optimization
+./build/apps/09_de1220_optimization
 ```
 
 ## Example Descriptions
@@ -48,6 +51,18 @@ Compares multiple hyperparameter optimizers (CMA-ES, Simulated Annealing, PSO-ba
 ### 06_custom_parameter_space.cpp
 
 Demonstrates custom parameter space definition and validation. Creates a ParameterSpace with custom descriptors, generates random valid configurations, validates them, and tests a sampled configuration with an algorithm. Outputs generated configurations and optimization results.
+
+### 07_cmaes_optimization.cpp
+
+Demonstrates CMA-ES used as an evolutionary algorithm (not as a hyperparameter optimizer). Configures CMA-ES algorithm with specified parameters and optimizes a 10-dimensional Sphere problem. Outputs best fitness, function evaluations, generations, and wall time.
+
+### 08_sga_optimization.cpp
+
+Demonstrates Simple Genetic Algorithm (SGA) usage. Configures SGA with population size, generations, crossover probability, and mutation probability. Optimizes a 10-dimensional Rastrigin problem. Outputs best fitness, function evaluations, generations, and wall time.
+
+### 09_de1220_optimization.cpp
+
+Demonstrates DE1220 (pDE) usage - an alternative self-adaptive Differential Evolution variant implemented via `pagmo::de1220`. Note: This is different from jDE (Brest et al.), which is available via SADE with `variant_adptv=1`. Configures DE1220 with population size, generations, tolerance parameters, variant adaptation, and memory settings. Optimizes a 10-dimensional Ackley problem. Outputs best fitness, function evaluations, generations, and wall time.
 
 ## Output Format
 
