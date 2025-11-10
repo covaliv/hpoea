@@ -179,5 +179,30 @@ private:
     std::vector<double> upper_bounds_{};
 };
 
+// 0-1 knapsack problem with continuous encoding
+class KnapsackProblem final : public core::IProblem {
+public:
+    KnapsackProblem(const std::vector<double> &values, const std::vector<double> &weights, double capacity);
+
+    [[nodiscard]] const core::ProblemMetadata &metadata() const noexcept override { return metadata_; }
+
+    [[nodiscard]] std::size_t dimension() const override { return dimension_; }
+
+    [[nodiscard]] std::vector<double> lower_bounds() const override { return lower_bounds_; }
+
+    [[nodiscard]] std::vector<double> upper_bounds() const override { return upper_bounds_; }
+
+    [[nodiscard]] double evaluate(const std::vector<double> &decision_vector) const override;
+
+private:
+    core::ProblemMetadata metadata_{};
+    std::size_t dimension_{0};
+    std::vector<double> values_{};
+    std::vector<double> weights_{};
+    double capacity_{0.0};
+    std::vector<double> lower_bounds_{};
+    std::vector<double> upper_bounds_{};
+};
+
 } // namespace hpoea::wrappers::problems
 
