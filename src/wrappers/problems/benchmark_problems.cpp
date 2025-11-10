@@ -201,5 +201,50 @@ double StyblinskiTangProblem::evaluate(const std::vector<double> &decision_vecto
     return sum;
 }
 
+KnapsackProblem::KnapsackProblem(const std::vector<double> &values, const std::vector<double> &weights, double capacity) {
+    if (values.size() != weights.size()) {
+        throw std::runtime_error("Values and weights vectors must have same size");
+    }
+    if (values.empty()) {
+        throw std::runtime_error("Knapsack problem must have at least one item");
+    }
+    if (capacity <= 0.0) {
+        throw std::runtime_error("Knapsack capacity must be positive");
+    }
+    
+    metadata_.id = "knapsack";
+    metadata_.family = "combinatorial";
+    metadata_.description = "0-1 knapsack problem (continuous encoding)";
+    dimension_ = values.size();
+    values_ = values;
+    weights_ = weights;
+    capacity_ = capacity;
+    lower_bounds_.assign(dimension_, 0.0);
+    upper_bounds_.assign(dimension_, 1.0);
+}
+
+double KnapsackProblem::evaluate(const std::vector<double> &decision_vector) const {
+    if (decision_vector.size() != dimension_) {
+        throw std::runtime_error("Decision vector dimension mismatch");
+    }
+    
+    double total_value = 0.0;
+    double total_weight = 0.0;
+    
+    for (std::size_t i = 0; i < decision_vector.size(); ++i) {
+        const bool selected = decision_vector[i] >= 0.5;
+        if (selected) {
+            total_value += values_[i];
+            total_weight += weights_[i];
+        }
+    }
+    
+    constexpr double penalty_factor = 1000.0;
+    const double capacity_violation = std::max(0.0, total_weight - capacity_);
+    const double penalty = penalty_factor * capacity_violation;
+    
+    return -(total_value - penalty);
+}
+
 } // namespace hpoea::wrappers::problems
 
