@@ -54,5 +54,9 @@ if (HPOEA_WITH_PAGMO)
     add_executable(10_knapsack_optimization 10_knapsack_optimization.cpp)
     target_link_libraries(10_knapsack_optimization PRIVATE hpoea_pagmo hpoea_core)
     target_compile_features(10_knapsack_optimization PRIVATE cxx_std_20)
+
+    add_executable(11_knapsack_hyperparameter_optimization 11_knapsack_hyperparameter_optimization.cpp)
+    target_link_libraries(11_knapsack_hyperparameter_optimization PRIVATE hpoea_pagmo hpoea_core)
+    target_compile_features(11_knapsack_hyperparameter_optimization PRIVATE cxx_std_20)
 endif ()
 
