@@ -24,6 +24,8 @@ cmake --build .
 ./build/apps/07_cmaes_optimization
 ./build/apps/08_sga_optimization
 ./build/apps/09_de1220_optimization
+./build/apps/10_knapsack_optimization
+./build/apps/11_knapsack_hyperparameter_optimization
 ```
 
 ## Example Descriptions
@@ -63,6 +65,14 @@ Demonstrates Simple Genetic Algorithm (SGA) usage. Configures SGA with populatio
 ### 09_de1220_optimization.cpp
 
 Demonstrates DE1220 (pDE) usage - an alternative self-adaptive Differential Evolution variant implemented via `pagmo::de1220`. Note: This is different from jDE (Brest et al.), which is available via SADE with `variant_adptv=1`. Configures DE1220 with population size, generations, tolerance parameters, variant adaptation, and memory settings. Optimizes a 10-dimensional Ackley problem. Outputs best fitness, function evaluations, generations, and wall time.
+
+### 10_knapsack_optimization.cpp
+
+Demonstrates knapsack problem optimization using Differential Evolution. Creates a 0-1 knapsack problem with item values and weights, then optimizes it to find the best item selection. Uses continuous encoding where values in [0,1] are thresholded at 0.5 to determine item selection. Outputs best fitness, selected items, total value, total weight, capacity, function evaluations, generations, and wall time.
+
+### 11_knapsack_hyperparameter_optimization.cpp
+
+Demonstrates hyperparameter optimization for the knapsack problem. Uses CMA-ES to tune Differential Evolution parameters while optimizing a knapsack problem instance. Shows how to apply hyperparameter optimization to combinatorial problems. Outputs best objective, number of trials, best hyperparameters, function evaluations, and wall time.
 
 ## Output Format
 

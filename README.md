@@ -29,6 +29,7 @@ Modular C++ framework for hyperparameter optimization of evolutionary algorithms
 - Schwefel
 - Zakharov
 - Styblinski-Tang
+- Knapsack (0-1 knapsack with continuous encoding)
 
 ### Features
 - Parallel execution via thread-based experiment management
@@ -108,5 +109,7 @@ Example programs are located in `apps/` directory:
 - `07_cmaes_optimization.cpp`: CMA-ES as an evolutionary algorithm
 - `08_sga_optimization.cpp`: Simple Genetic Algorithm usage
 - `09_de1220_optimization.cpp`: DE1220 (pDE) usage - alternative self-adaptive DE variant
+- `10_knapsack_optimization.cpp`: knapsack problem optimization
+- `11_knapsack_hyperparameter_optimization.cpp`: hyperparameter optimization for knapsack problem
 
 See `apps/README.md` for detailed documentation.
