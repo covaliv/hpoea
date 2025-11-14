@@ -26,6 +26,7 @@ cmake --build .
 ./build/apps/09_de1220_optimization
 ./build/apps/10_knapsack_optimization
 ./build/apps/11_knapsack_hyperparameter_optimization
+./build/apps/13_knapsack_pso_sa_optimization
 ```
 
 ## Example Descriptions
@@ -73,6 +74,10 @@ Demonstrates knapsack problem optimization using Differential Evolution. Creates
 ### 11_knapsack_hyperparameter_optimization.cpp
 
 Demonstrates hyperparameter optimization for the knapsack problem. Uses CMA-ES to tune Differential Evolution parameters while optimizing a knapsack problem instance. Shows how to apply hyperparameter optimization to combinatorial problems. Outputs best objective, number of trials, best hyperparameters, function evaluations, and wall time.
+
+### 13_knapsack_pso_sa_optimization.cpp
+
+Demonstrates pso with simulated annealing hyperparameter optimization for knapsack problem. Uses simulated annealing to tune particle swarm optimization parameters. Shows alternative hyperparameter optimizer and evolutionary algorithm combination. Outputs best objective, number of trials, best hyperparameters, function evaluations, and wall time.
 
 ## Output Format
 

@@ -29,7 +29,7 @@ Modular C++ framework for hyperparameter optimization of evolutionary algorithms
 - Schwefel
 - Zakharov
 - Styblinski-Tang
-- Knapsack (0-1 knapsack with continuous encoding)
+- Knapsack (0-1 knapsack with continuous encoding and penalty-based constraint handling)
 
 ### Features
 - Parallel execution via thread-based experiment management
@@ -38,25 +38,59 @@ Modular C++ framework for hyperparameter optimization of evolutionary algorithms
 
 ## Requirements
 
-- C++20 compiler
-- CMake 3.20 or later
-- Pagmo2 library
+- c++20 compiler
+- cmake 3.20 or later
+- pagmo2 library with eigen3 support
+
+## Installing Pagmo2
+
+install eigen3:
+```bash
+sudo pacman -S eigen
+```
+
+build and install pagmo2 with eigen3 support:
+```bash
+git clone https://github.com/esa/pagmo2.git
+cd pagmo2
+mkdir build && cd build
+cmake .. -DPAGMO_WITH_EIGEN3=ON -DEigen3_DIR=/usr/lib/cmake/eigen3
+cmake --build .
+cmake --install . --prefix ~/.local
+```
+
+verify installation:
+```bash
+ls ~/.local/lib/cmake/pagmo/PagmoConfig.cmake
+ls ~/.local/include/pagmo/pagmo.hpp
+ls ~/.local/lib/libpagmo.so*
+```
+
+if cmake cannot find pagmo2, specify the installation directory:
+```bash
+cmake -S . -B build -DHPOEA_WITH_PAGMO=ON -DPagmo_DIR=~/.local/lib/cmake/pagmo
+```
+
+if you get errors about missing eigen3 support, rebuild pagmo2 with eigen3 enabled:
+```bash
+cd pagmo2/build
+cmake .. -DPAGMO_WITH_EIGEN3=ON -DEigen3_DIR=/usr/lib/cmake/eigen3
+cmake --build .
+cmake --install . --prefix ~/.local
+```
 
 ## Building
 
-Standard build:
-
+standard build:
 ```bash
-mkdir build && cd build
-cmake .. -DHPOEA_WITH_PAGMO=ON
-cmake --build .
+cmake -S . -B build -DHPOEA_WITH_PAGMO=ON -DPagmo_DIR=~/.local/lib/cmake/pagmo
+cmake --build build
 ```
 
-Build with tests:
-
+build with tests:
 ```bash
-cmake .. -DHPOEA_WITH_PAGMO=ON -DHPOEA_BUILD_TESTS=ON
-cmake --build .
+cmake -S . -B build -DHPOEA_WITH_PAGMO=ON -DPagmo_DIR=~/.local/lib/cmake/pagmo -DHPOEA_BUILD_TESTS=ON
+cmake --build build
 ```
 
 ## Usage Example
@@ -109,7 +143,8 @@ Example programs are located in `apps/` directory:
 - `07_cmaes_optimization.cpp`: CMA-ES as an evolutionary algorithm
 - `08_sga_optimization.cpp`: Simple Genetic Algorithm usage
 - `09_de1220_optimization.cpp`: DE1220 (pDE) usage - alternative self-adaptive DE variant
-- `10_knapsack_optimization.cpp`: knapsack problem optimization
-- `11_knapsack_hyperparameter_optimization.cpp`: hyperparameter optimization for knapsack problem
+- `10_knapsack_optimization.cpp`: knapsack problem optimization using differential evolution
+- `11_knapsack_hyperparameter_optimization.cpp`: hyperparameter optimization for knapsack problem using cma-es to tune de parameters
+- `13_knapsack_pso_sa_optimization.cpp`: pso with simulated annealing hyperparameter optimization for knapsack problem
 
 See `apps/README.md` for detailed documentation.
