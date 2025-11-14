@@ -9,9 +9,9 @@
 int main() {
     using namespace hpoea;
     
-    std::vector<double> values = {60.0, 100.0, 120.0, 80.0, 50.0, 90.0, 70.0, 40.0};
-    std::vector<double> weights = {10.0, 20.0, 30.0, 15.0, 10.0, 25.0, 20.0, 5.0};
-    double capacity = 50.0;
+    std::vector<double> values = {135.0, 139.0, 149.0, 150.0, 156.0, 163.0, 173.0, 184.0, 192.0, 201.0, 210.0, 214.0, 221.0, 229.0, 240.0};
+    std::vector<double> weights = {70.0, 73.0, 77.0, 80.0, 82.0, 87.0, 90.0, 94.0, 98.0, 106.0, 110.0, 113.0, 115.0, 118.0, 120.0};
+    double capacity = 750.0;
     
     wrappers::problems::KnapsackProblem problem(values, weights, capacity);
     pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
