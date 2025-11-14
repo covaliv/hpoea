@@ -203,13 +203,13 @@ double StyblinskiTangProblem::evaluate(const std::vector<double> &decision_vecto
 
 KnapsackProblem::KnapsackProblem(const std::vector<double> &values, const std::vector<double> &weights, double capacity) {
     if (values.size() != weights.size()) {
-        throw std::runtime_error("Values and weights vectors must have same size");
+        throw std::runtime_error("values and weights vectors must have same size");
     }
     if (values.empty()) {
-        throw std::runtime_error("Knapsack problem must have at least one item");
+        throw std::runtime_error("knapsack problem must have at least one item");
     }
     if (capacity <= 0.0) {
-        throw std::runtime_error("Knapsack capacity must be positive");
+        throw std::runtime_error("knapsack capacity must be positive");
     }
     
     metadata_.id = "knapsack";
@@ -225,7 +225,7 @@ KnapsackProblem::KnapsackProblem(const std::vector<double> &values, const std::v
 
 double KnapsackProblem::evaluate(const std::vector<double> &decision_vector) const {
     if (decision_vector.size() != dimension_) {
-        throw std::runtime_error("Decision vector dimension mismatch");
+        throw std::runtime_error("decision vector dimension mismatch");
     }
     
     double total_value = 0.0;
