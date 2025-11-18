@@ -130,6 +130,13 @@ Layered architecture with four components:
 3. Experiment management: orchestration layer for running experiments
 4. Logging: structured logging system for reproducibility
 
+## experiment complexity guide
+
+- lines of code: adapting the examples in `apps/10_knapsack_optimization.cpp` or `apps/11_knapsack_hyperparameter_optimization.cpp` requires roughly 40-60 lines, covering includes, problem setup, optimizer configuration, budgets, and the run loop.
+- required concepts: understand `core::IProblem` (problem definition), `pagmo_wrappers::IEvolutionaryAlgorithmFactory` (algorithm choice), `core::IHyperparameterOptimizer` (meta-optimizer), `core::Budget` (limits), and `core::Logger` (jsonl output). these abstractions mirror the headers included in every example.
+- time estimate: once dependencies are installed and the build tree is configured with `HPOEA_WITH_PAGMO=ON`, customizing an existing example to a new problem typically takes 10–15 minutes; implementing a brand new experiment (new `apps/*.cpp`) usually fits in a 30–45 minute window including compilation.
+- common pitfalls: forgetting to build pagmo with eigen3 support (causes `pagmo::cmaes` compile errors), omitting `-DPagmo_DIR` so cmake cannot find the local install, mismatching problem dimension vs. decision vector size (throws at runtime), and running optimizers without setting budgets which keeps defaults at zero trials.
+
 ## Example Programs
 
 Example programs are located in `apps/` directory:
