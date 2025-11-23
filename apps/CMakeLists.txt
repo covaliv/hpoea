@@ -1,7 +1,3 @@
-add_executable(hpoea_cli hpoea_cli.cpp)
-target_link_libraries(hpoea_cli PRIVATE hpoea_core)
-target_compile_features(hpoea_cli PRIVATE cxx_std_20)
-
 if (HPOEA_WITH_PAGMO)
     add_executable(hpoea_simple_example simple_example.cpp)
     target_link_libraries(hpoea_simple_example PRIVATE hpoea_pagmo hpoea_core)
