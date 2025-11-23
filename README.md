@@ -132,7 +132,7 @@ Layered architecture with four components:
 
 ## experiment complexity guide
 
-- lines of code: adapting the examples in `apps/10_knapsack_optimization.cpp` or `apps/11_knapsack_hyperparameter_optimization.cpp` requires roughly 40-60 lines, covering includes, problem setup, optimizer configuration, budgets, and the run loop.
+- lines of code: adapting the examples in `apps/knapsack_optimization_example.cpp` or `apps/knapsack_hpo_example.cpp` requires roughly 40-60 lines, covering includes, problem setup, optimizer configuration, budgets, and the run loop.
 - required concepts: understand `core::IProblem` (problem definition), `pagmo_wrappers::IEvolutionaryAlgorithmFactory` (algorithm choice), `core::IHyperparameterOptimizer` (meta-optimizer), `core::Budget` (limits), and `core::Logger` (jsonl output). these abstractions mirror the headers included in every example.
 - time estimate: once dependencies are installed and the build tree is configured with `HPOEA_WITH_PAGMO=ON`, customizing an existing example to a new problem typically takes 10–15 minutes; implementing a brand new experiment (new `apps/*.cpp`) usually fits in a 30–45 minute window including compilation.
 - common pitfalls: forgetting to build pagmo with eigen3 support (causes `pagmo::cmaes` compile errors), omitting `-DPagmo_DIR` so cmake cannot find the local install, mismatching problem dimension vs. decision vector size (throws at runtime), and running optimizers without setting budgets which keeps defaults at zero trials.
@@ -141,17 +141,17 @@ Layered architecture with four components:
 
 Example programs are located in `apps/` directory:
 
-- `01_basic_ea_optimization.cpp`: basic evolutionary algorithm usage
-- `02_basic_hyperparameter_optimization.cpp`: hyperparameter optimization example
-- `03_experiment_management.cpp`: experiment management and logging
-- `04_custom_problem.cpp`: custom problem implementation
-- `05_multi_optimizer_comparison.cpp`: comparing multiple hyperparameter optimizers
-- `06_custom_parameter_space.cpp`: custom parameter space definition
-- `07_cmaes_optimization.cpp`: CMA-ES as an evolutionary algorithm
-- `08_sga_optimization.cpp`: Simple Genetic Algorithm usage
-- `09_de1220_optimization.cpp`: DE1220 (pDE) usage - alternative self-adaptive DE variant
-- `10_knapsack_optimization.cpp`: knapsack problem optimization using differential evolution
-- `11_knapsack_hyperparameter_optimization.cpp`: hyperparameter optimization for knapsack problem using cma-es to tune de parameters
-- `13_knapsack_pso_sa_optimization.cpp`: pso with simulated annealing hyperparameter optimization for knapsack problem
+- `basic_ea_example.cpp`: basic evolutionary algorithm usage
+- `basic_hpo_example.cpp`: hyperparameter optimization example
+- `experiment_management_example.cpp`: experiment management and logging
+- `custom_problem_example.cpp`: custom problem implementation
+- `optimizer_comparison_example.cpp`: comparing multiple hyperparameter optimizers
+- `custom_parameter_space_example.cpp`: custom parameter space definition
+- `cmaes_optimization_example.cpp`: CMA-ES as an evolutionary algorithm
+- `sga_optimization_example.cpp`: Simple Genetic Algorithm usage
+- `de1220_optimization_example.cpp`: DE1220 (pDE) usage - alternative self-adaptive DE variant
+- `knapsack_optimization_example.cpp`: knapsack problem optimization using differential evolution
+- `knapsack_hpo_example.cpp`: hyperparameter optimization for knapsack problem using cma-es to tune de parameters
+- `knapsack_pso_sa_example.cpp`: pso with simulated annealing hyperparameter optimization for knapsack problem
 
 See `apps/README.md` for detailed documentation.
