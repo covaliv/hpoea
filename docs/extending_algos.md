@@ -10,7 +10,7 @@ these notes explain how to add an evolutionary algorithm or optimizer by followi
 
 3. add the new `.cpp` file to `src/wrappers/pagmo/CMakeLists.txt` so it builds into `hpoea_pagmo`. rerun cmake with `-DHPOEA_WITH_PAGMO=ON` to refresh the build files.
 
-4. show the new algorithm in one of the apps, like `apps/07_cmaes_optimization.cpp`, or add a new simple program. that gives others a runnable example and doubles as documentation.
+4. show the new algorithm in one of the apps, like `apps/cmaes_optimization_example.cpp`, or add a new simple program. that gives others a runnable example and doubles as documentation.
 
 ## adding a hyperparameter optimizer
 
@@ -20,7 +20,7 @@ these notes explain how to add an evolutionary algorithm or optimizer by followi
 
 3. add the new source file to `HPOEA_PAGMO_SOURCES` so cmake builds it with the rest of the pagmo wrappers.
 
-4. give the optimizer a simple example in `apps/`, copying the style of `apps/11_knapsack_hyperparameter_optimization.cpp`.
+4. give the optimizer a simple example in `apps/`, copying the style of `apps/knapsack_hpo_example.cpp`.
 
 ## checklist
 
