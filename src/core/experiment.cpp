@@ -4,9 +4,6 @@
 #include "hpoea/core/logging.hpp"
 #include "hpoea/core/types.hpp"
 
-#include <pagmo/population.hpp>
-#include <pagmo/problem.hpp>
-#include <pagmo/types.hpp>
 #include <random>
 #include <thread>
 #include <vector>
