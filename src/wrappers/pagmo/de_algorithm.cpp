@@ -146,7 +146,8 @@ OptimizationResult PagmoDifferentialEvolution::run(const core::IProblem &problem
         const auto generations = determine_generations(configured_parameters_, budget, population_size);
         effective_parameters.insert_or_assign("generations", static_cast<std::int64_t>(generations));
 
-        pagmo::algorithm algorithm{pagmo::de(static_cast<unsigned>(generations), scaling_factor, crossover_rate, variant, ftol, xtol)};
+        const auto algorithm_seed = static_cast<unsigned>(seed & std::numeric_limits<unsigned>::max());
+        pagmo::algorithm algorithm{pagmo::de(static_cast<unsigned>(generations), scaling_factor, crossover_rate, variant, ftol, xtol, algorithm_seed)};
         pagmo::problem pg_problem{ProblemAdapter{problem}};
 
         const auto population_seed = static_cast<unsigned int>(seed & std::numeric_limits<unsigned int>::max());
