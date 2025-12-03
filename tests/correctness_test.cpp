@@ -1,426 +1,260 @@
+// correctness tests for hpoea framework
+// validates ea wrappers, hoa optimizers, parameter handling, and convergence
+
 #include "hpoea/core/experiment.hpp"
 #include "hpoea/core/logging.hpp"
+#include "hpoea/wrappers/pagmo/cmaes_hyper.hpp"
 #include "hpoea/wrappers/pagmo/de_algorithm.hpp"
 #include "hpoea/wrappers/pagmo/pso_algorithm.hpp"
-#include "hpoea/wrappers/pagmo/sade_algorithm.hpp"
-#include "hpoea/wrappers/pagmo/cmaes_hyper.hpp"
-#include "hpoea/wrappers/pagmo/sa_hyper.hpp"
 #include "hpoea/wrappers/pagmo/pso_hyper.hpp"
-#include "hpoea/wrappers/pagmo/nm_hyper.hpp"
+#include "hpoea/wrappers/pagmo/sade_algorithm.hpp"
 #include "hpoea/wrappers/problems/benchmark_problems.hpp"
 
 #include <algorithm>
 #include <cmath>
-#include <filesystem>
 #include <iomanip>
 #include <iostream>
-#include <map>
 #include <numeric>
 #include <string>
 #include <vector>
 
+using namespace hpoea;
+
+namespace {
+
+struct Test {
+    std::string name;
+    bool passed = false;
+    std::string error;
+};
+
+std::vector<Test> tests;
+
+// helper to run an ea on a problem and check basic validity
+template <typename Factory>
+bool run_ea(Factory &factory, core::IProblem &problem, std::size_t pop, std::size_t gen,
+            unsigned long seed, double max_fitness) {
+    auto algo = factory.create();
+    core::ParameterSet params;
+    params.emplace("population_size", static_cast<std::int64_t>(pop));
+    params.emplace("generations", static_cast<std::int64_t>(gen));
+    algo->configure(params);
+
+    core::Budget budget;
+    budget.generations = gen;
+
+    auto result = algo->run(problem, budget, seed);
+    return result.status == core::RunStatus::Success &&
+           result.best_fitness < max_fitness &&
+           result.best_solution.size() == problem.dimension() &&
+           result.budget_usage.generations <= gen;
+}
+
+void log(const Test &t) {
+    std::cout << "  " << (t.passed ? "pass" : "FAIL") << " " << t.name;
+    if (!t.passed && !t.error.empty()) std::cout << " (" << t.error << ")";
+    std::cout << "\n";
+}
+
+} // namespace
+
 int main() {
-    using namespace hpoea;
+    std::cout << std::fixed << std::setprecision(6);
+    std::cout << "correctness tests\n\n";
 
-    std::cout << std::fixed << std::setprecision(10);
-    std::cout << "=== Comprehensive Correctness Test Suite ===\n\n";
-
-    struct TestResult {
-        std::string test_name;
-        bool passed{false};
-        std::string error_message;
-        double best_fitness{0.0};
-        std::size_t evaluations{0};
-    };
-
-    std::vector<TestResult> results;
-
-    // Test 1: Verify EA wrappers can optimize simple problems
-    std::cout << "Test 1: EA Wrapper Basic Functionality\n";
-    std::cout << "----------------------------------------\n";
+    // test ea wrappers on sphere
+    std::cout << "ea wrapper basic functionality\n";
     {
-        wrappers::problems::SphereProblem problem(5);
-        
-        // Test DE
-        {
-            pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
-            auto algo = factory.create();
-            core::ParameterSet params;
-            params.emplace("population_size", static_cast<std::int64_t>(30));
-            params.emplace("generations", static_cast<std::int64_t>(50));
-            algo->configure(params);
-            
-            core::Budget budget;
-            budget.generations = 50;
-            
-            auto result = algo->run(problem, budget, 42UL);
-            
-            TestResult tr;
-            tr.test_name = "DE on Sphere (5D)";
-            tr.passed = (result.status == core::RunStatus::Success) && 
-                       (result.best_fitness < 1.0) &&
-                       (result.best_solution.size() == 5) &&
-                       (result.budget_usage.generations <= 50);
-            tr.best_fitness = result.best_fitness;
-            tr.evaluations = result.budget_usage.function_evaluations;
-            if (!tr.passed) {
-                tr.error_message = "Status: " + std::to_string(static_cast<int>(result.status)) + 
-                                 ", Fitness: " + std::to_string(result.best_fitness);
-            }
-            results.push_back(tr);
-            std::cout << "  " << (tr.passed ? "PASS" : "FAIL") << " " << tr.test_name 
-                      << " - Best: " << tr.best_fitness << ", Evals: " << tr.evaluations << "\n";
-        }
+        wrappers::problems::SphereProblem sphere(5);
 
-        // Test PSO
-        {
-            pagmo_wrappers::PagmoParticleSwarmOptimizationFactory factory;
-            auto algo = factory.create();
-            core::ParameterSet params;
-            params.emplace("population_size", static_cast<std::int64_t>(30));
-            params.emplace("generations", static_cast<std::int64_t>(50));
-            algo->configure(params);
-            
-            core::Budget budget;
-            budget.generations = 50;
-            
-            auto result = algo->run(problem, budget, 42UL);
-            
-            TestResult tr;
-            tr.test_name = "PSO on Sphere (5D)";
-            tr.passed = (result.status == core::RunStatus::Success) && 
-                       (result.best_fitness < 1.0) &&
-                       (result.best_solution.size() == 5);
-            tr.best_fitness = result.best_fitness;
-            tr.evaluations = result.budget_usage.function_evaluations;
-            if (!tr.passed) {
-                tr.error_message = "Status: " + std::to_string(static_cast<int>(result.status));
-            }
-            results.push_back(tr);
-            std::cout << "  " << (tr.passed ? "PASS" : "FAIL") << " " << tr.test_name 
-                      << " - Best: " << tr.best_fitness << ", Evals: " << tr.evaluations << "\n";
-        }
+        pagmo_wrappers::PagmoDifferentialEvolutionFactory de;
+        Test t{"de on sphere 5d", run_ea(de, sphere, 30, 50, 42UL, 1.0), ""};
+        tests.push_back(t);
+        log(t);
 
-        // Test SADE
-        {
-            pagmo_wrappers::PagmoSelfAdaptiveDEFactory factory;
-            auto algo = factory.create();
-            core::ParameterSet params;
-            params.emplace("population_size", static_cast<std::int64_t>(30));
-            params.emplace("generations", static_cast<std::int64_t>(50));
-            algo->configure(params);
-            
-            core::Budget budget;
-            budget.generations = 50;
-            
-            auto result = algo->run(problem, budget, 42UL);
-            
-            TestResult tr;
-            tr.test_name = "SADE on Sphere (5D)";
-            tr.passed = (result.status == core::RunStatus::Success) && 
-                       (result.best_fitness < 1.0) &&
-                       (result.best_solution.size() == 5);
-            tr.best_fitness = result.best_fitness;
-            tr.evaluations = result.budget_usage.function_evaluations;
-            if (!tr.passed) {
-                tr.error_message = "Status: " + std::to_string(static_cast<int>(result.status));
-            }
-            results.push_back(tr);
-            std::cout << "  " << (tr.passed ? "PASS" : "FAIL") << " " << tr.test_name 
-                      << " - Best: " << tr.best_fitness << ", Evals: " << tr.evaluations << "\n";
-        }
+        pagmo_wrappers::PagmoParticleSwarmOptimizationFactory pso;
+        t = {"pso on sphere 5d", run_ea(pso, sphere, 30, 50, 42UL, 1.0), ""};
+        tests.push_back(t);
+        log(t);
+
+        pagmo_wrappers::PagmoSelfAdaptiveDEFactory sade;
+        t = {"sade on sphere 5d", run_ea(sade, sphere, 30, 50, 42UL, 1.0), ""};
+        tests.push_back(t);
+        log(t);
     }
 
-    std::cout << "\nTest 2: Problem Variety\n";
-    std::cout << "-----------------------\n";
-    
-    // Test different problems
+    // test de on various benchmark problems
+    std::cout << "\nproblem variety\n";
     {
-        struct ProblemTest {
-            std::string name;
-            std::unique_ptr<core::IProblem> problem;
-            double expected_optimum;
-            double tolerance;
+        pagmo_wrappers::PagmoDifferentialEvolutionFactory de;
+
+        auto test_problem = [&](const std::string &name, core::IProblem &p) {
+            Test t{name, run_ea(de, p, 50, 100, 123UL, 100.0), ""};
+            tests.push_back(t);
+            log(t);
         };
 
-        std::vector<ProblemTest> problems;
-        problems.push_back({"Sphere (10D)", std::make_unique<wrappers::problems::SphereProblem>(10), 0.0, 1e-6});
-        problems.push_back({"Rosenbrock (6D)", std::make_unique<wrappers::problems::RosenbrockProblem>(6), 0.0, 1e-3});
-        problems.push_back({"Rastrigin (8D)", std::make_unique<wrappers::problems::RastriginProblem>(8), 0.0, 1e-6});
-        problems.push_back({"Ackley (5D)", std::make_unique<wrappers::problems::AckleyProblem>(5), 0.0, 1e-6});
+        wrappers::problems::SphereProblem sphere(10);
+        wrappers::problems::RosenbrockProblem rosen(6);
+        wrappers::problems::RastriginProblem rast(8);
+        wrappers::problems::AckleyProblem ackley(5);
 
-        pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
-        
-        for (const auto &ptest : problems) {
-            auto algo = factory.create();
-            core::ParameterSet params;
-            params.emplace("population_size", static_cast<std::int64_t>(50));
-            params.emplace("generations", static_cast<std::int64_t>(100));
-            algo->configure(params);
-            
-            core::Budget budget;
-            budget.generations = 100;
-            
-            auto result = algo->run(*ptest.problem, budget, 123UL);
-            
-            TestResult tr;
-            tr.test_name = "DE on " + ptest.name;
-            tr.passed = (result.status == core::RunStatus::Success) && 
-                       (result.best_fitness < 100.0) &&
-                       (result.best_solution.size() == ptest.problem->dimension());
-            tr.best_fitness = result.best_fitness;
-            tr.evaluations = result.budget_usage.function_evaluations;
-            if (!tr.passed) {
-                tr.error_message = "Status: " + std::to_string(static_cast<int>(result.status)) +
-                                 ", Fitness: " + std::to_string(result.best_fitness);
-            }
-            results.push_back(tr);
-            std::cout << "  " << (tr.passed ? "PASS" : "FAIL") << " " << tr.test_name 
-                      << " - Best: " << tr.best_fitness << " (optimum: " << ptest.expected_optimum << ")\n";
-        }
+        test_problem("de on sphere 10d", sphere);
+        test_problem("de on rosenbrock 6d", rosen);
+        test_problem("de on rastrigin 8d", rast);
+        test_problem("de on ackley 5d", ackley);
     }
 
-    std::cout << "\nTest 3: Reproducibility (Same Seed)\n";
-    std::cout << "------------------------------------\n";
-    
+    // reproducibility: same seed should give identical results
+    std::cout << "\nreproducibility\n";
     {
-        wrappers::problems::SphereProblem problem(5);
-        pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
-        
-        auto algo1 = factory.create();
-        auto algo2 = factory.create();
+        wrappers::problems::SphereProblem sphere(5);
+        pagmo_wrappers::PagmoDifferentialEvolutionFactory de;
+
         core::ParameterSet params;
         params.emplace("population_size", static_cast<std::int64_t>(20));
         params.emplace("generations", static_cast<std::int64_t>(30));
-        algo1->configure(params);
-        algo2->configure(params);
-        
+
         core::Budget budget;
         budget.generations = 30;
-        
-        auto result1 = algo1->run(problem, budget, 999UL);
-        auto result2 = algo2->run(problem, budget, 999UL);
-        
-        TestResult tr;
-        tr.test_name = "Reproducibility with same seed";
-        tr.passed = (result1.status == core::RunStatus::Success) &&
-                    (result2.status == core::RunStatus::Success) &&
-                    (result1.best_fitness < 1.0) &&
-                    (result2.best_fitness < 1.0);
-        tr.best_fitness = result1.best_fitness;
-        if (!tr.passed) {
-            tr.error_message = "Status1: " + std::to_string(static_cast<int>(result1.status)) +
-                             ", Status2: " + std::to_string(static_cast<int>(result2.status)) +
-                             ", Fitness1: " + std::to_string(result1.best_fitness) +
-                             ", Fitness2: " + std::to_string(result2.best_fitness);
-        }
-        results.push_back(tr);
-        std::cout << "  " << (tr.passed ? "PASS" : "FAIL") << " " << tr.test_name 
-                  << " - Run1: " << result1.best_fitness << ", Run2: " << result2.best_fitness 
-                  << " (Note: Some variance expected due to stochastic nature)\n";
+
+        auto run = [&]() {
+            auto algo = de.create();
+            algo->configure(params);
+            return algo->run(sphere, budget, 999UL);
+        };
+
+        auto r1 = run();
+        auto r2 = run();
+        double diff = std::abs(r1.best_fitness - r2.best_fitness);
+
+        Test t{"same seed gives identical results", diff < 1e-10, "diff=" + std::to_string(diff)};
+        tests.push_back(t);
+        log(t);
     }
 
-    std::cout << "\nTest 4: Budget Enforcement\n";
-    std::cout << "---------------------------\n";
-    
+    // budget enforcement: algorithm should respect generation limit
+    std::cout << "\nbudget enforcement\n";
     {
-        wrappers::problems::SphereProblem problem(5);
-        pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
-        auto algo = factory.create();
+        wrappers::problems::SphereProblem sphere(5);
+        pagmo_wrappers::PagmoDifferentialEvolutionFactory de;
+
+        auto algo = de.create();
         core::ParameterSet params;
         params.emplace("population_size", static_cast<std::int64_t>(20));
-        params.emplace("generations", static_cast<std::int64_t>(1000));
+        params.emplace("generations", static_cast<std::int64_t>(1000)); // request more than budget allows
         algo->configure(params);
-        
+
         core::Budget budget;
-        budget.generations = 50;
-        
-        auto result = algo->run(problem, budget, 42UL);
-        
-        TestResult tr;
-        tr.test_name = "Budget limit enforcement";
-        tr.passed = (result.status == core::RunStatus::Success) &&
-                    (result.budget_usage.generations <= 50);
-        tr.best_fitness = result.best_fitness;
-        tr.evaluations = result.budget_usage.function_evaluations;
-        if (!tr.passed) {
-            tr.error_message = "Used " + std::to_string(result.budget_usage.generations) + " generations, limit was 50";
-        }
-        results.push_back(tr);
-        std::cout << "  " << (tr.passed ? "PASS" : "FAIL") << " " << tr.test_name 
-                  << " - Used: " << result.budget_usage.generations << " generations (limit: 50)\n";
+        budget.generations = 50; // but limit to 50
+
+        auto result = algo->run(sphere, budget, 42UL);
+
+        Test t{"respects generation budget", result.budget_usage.generations <= 50,
+               "used " + std::to_string(result.budget_usage.generations)};
+        tests.push_back(t);
+        log(t);
     }
 
-    std::cout << "\nTest 5: HOA Basic Functionality\n";
-    std::cout << "--------------------------------\n";
-    
+    // hoa functionality: hyperparameter optimizers should improve fitness
+    std::cout << "\nhoa basic functionality\n";
     {
-        wrappers::problems::SphereProblem problem(5);
-        pagmo_wrappers::PagmoDifferentialEvolutionFactory ea_factory;
-        
-        // Test CMA-ES HOA
-        {
-            pagmo_wrappers::PagmoCmaesHyperOptimizer hoa;
+        wrappers::problems::SphereProblem sphere(5);
+        pagmo_wrappers::PagmoDifferentialEvolutionFactory de;
+
+        core::Budget budget;
+        budget.generations = 10;
+        budget.function_evaluations = 2000;
+
+        auto test_hoa = [&](const std::string &name, core::IHyperparameterOptimizer &hoa) {
             core::ParameterSet hoa_params;
             hoa_params.emplace("generations", static_cast<std::int64_t>(10));
             hoa.configure(hoa_params);
-            
-            core::Budget budget;
-            budget.generations = 10;
-            budget.function_evaluations = 2000;
-            
-            auto result = hoa.optimize(ea_factory, problem, budget, 42UL);
-            
-            TestResult tr;
-            tr.test_name = "CMA-ES HOA";
-            tr.passed = (result.status == core::RunStatus::Success) &&
-                       (!result.trials.empty()) &&
-                       (result.best_objective < 10.0);
-            tr.best_fitness = result.best_objective;
-            tr.evaluations = result.budget_usage.function_evaluations;
-            if (!tr.passed) {
-                tr.error_message = "Status: " + std::to_string(static_cast<int>(result.status)) +
-                                 ", Trials: " + std::to_string(result.trials.size());
-            }
-            results.push_back(tr);
-            std::cout << "  " << (tr.passed ? "PASS" : "FAIL") << " " << tr.test_name 
-                      << " - Best: " << tr.best_fitness << ", Trials: " << result.trials.size() << "\n";
-        }
 
-        // Test PSO HOA
-        {
-            pagmo_wrappers::PagmoPsoHyperOptimizer hoa;
-            core::ParameterSet hoa_params;
-            hoa_params.emplace("generations", static_cast<std::int64_t>(10));
-            hoa.configure(hoa_params);
-            
-            core::Budget budget;
-            budget.generations = 10;
-            budget.function_evaluations = 2000;
-            
-            auto result = hoa.optimize(ea_factory, problem, budget, 42UL);
-            
-            TestResult tr;
-            tr.test_name = "PSO HOA";
-            tr.passed = (result.status == core::RunStatus::Success) &&
-                       (!result.trials.empty()) &&
-                       (result.best_objective < 10.0);
-            tr.best_fitness = result.best_objective;
-            tr.evaluations = result.budget_usage.function_evaluations;
-            if (!tr.passed) {
-                tr.error_message = "Status: " + std::to_string(static_cast<int>(result.status));
-            }
-            results.push_back(tr);
-            std::cout << "  " << (tr.passed ? "PASS" : "FAIL") << " " << tr.test_name 
-                      << " - Best: " << tr.best_fitness << ", Trials: " << result.trials.size() << "\n";
-        }
+            auto result = hoa.optimize(de, sphere, budget, 42UL);
+            bool ok = result.status == core::RunStatus::Success &&
+                      !result.trials.empty() && result.best_objective < 10.0;
+
+            Test t{name, ok, ""};
+            tests.push_back(t);
+            log(t);
+        };
+
+        pagmo_wrappers::PagmoCmaesHyperOptimizer cmaes_hoa;
+        pagmo_wrappers::PagmoPsoHyperOptimizer pso_hoa;
+
+        test_hoa("cmaes hoa", cmaes_hoa);
+        test_hoa("pso hoa", pso_hoa);
     }
 
-    std::cout << "\nTest 6: Parameter Validation\n";
-    std::cout << "-----------------------------\n";
-    
+    // parameter validation: should reject invalid parameters
+    std::cout << "\nparameter validation\n";
     {
-        pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
-        auto algo = factory.create();
-        
-        // Test invalid parameter
-        {
-            core::ParameterSet invalid;
-            invalid.emplace("variant", static_cast<std::int64_t>(0)); // Out of range
-            
-            TestResult tr;
-            tr.test_name = "Invalid parameter rejection";
-            try {
-                algo->configure(invalid);
-                tr.passed = false;
-                tr.error_message = "Should have thrown ParameterValidationError";
-            } catch (const core::ParameterValidationError &) {
-                tr.passed = true;
-            }
-            results.push_back(tr);
-            std::cout << "  " << (tr.passed ? "PASS" : "FAIL") << " " << tr.test_name << "\n";
+        pagmo_wrappers::PagmoDifferentialEvolutionFactory de;
+        auto algo = de.create();
+
+        core::ParameterSet invalid;
+        invalid.emplace("variant", static_cast<std::int64_t>(0)); // out of range
+
+        bool threw = false;
+        try {
+            algo->configure(invalid);
+        } catch (const core::ParameterValidationError &) {
+            threw = true;
         }
 
-        // Test missing required parameter
-        {
-            core::ParameterSet missing;
-            // Don't set population_size which is required
-            auto test_algo = factory.create();
-            
-            TestResult tr;
-            tr.test_name = "Missing required parameter";
-            try {
-                test_algo->configure(missing);
-                tr.passed = true;
-            } catch (const core::ParameterValidationError &) {
-                tr.passed = true; // Exception is also acceptable behavior
-            }
-            results.push_back(tr);
-            std::cout << "  " << (tr.passed ? "PASS" : "FAIL") << " " << tr.test_name << "\n";
-        }
+        Test t{"rejects invalid variant", threw, ""};
+        tests.push_back(t);
+        log(t);
     }
 
-    std::cout << "\nTest 7: Convergence Verification\n";
-    std::cout << "----------------------------------\n";
-    
+    // convergence: more generations should yield better fitness
+    std::cout << "\nconvergence\n";
     {
-        wrappers::problems::SphereProblem problem(5);
-        pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
-        
-        // Run with different budgets and verify convergence improves
-        std::vector<std::size_t> generations = {20, 50, 100};
-        std::vector<double> best_fitnesses;
-        
-        for (auto gen : generations) {
-            auto algo = factory.create();
+        wrappers::problems::SphereProblem sphere(5);
+        pagmo_wrappers::PagmoDifferentialEvolutionFactory de;
+
+        auto run_with_gen = [&](std::size_t gen) {
+            auto algo = de.create();
             core::ParameterSet params;
             params.emplace("population_size", static_cast<std::int64_t>(30));
             params.emplace("generations", static_cast<std::int64_t>(gen));
             algo->configure(params);
-            
+
             core::Budget budget;
             budget.generations = gen;
-            
-            auto result = algo->run(problem, budget, 42UL);
-            best_fitnesses.push_back(result.best_fitness);
-        }
-        
-        TestResult tr;
-        tr.test_name = "Convergence with more generations";
-        tr.passed = (best_fitnesses[0] >= best_fitnesses[1]) && 
-                   (best_fitnesses[1] >= best_fitnesses[2]) &&
-                   (best_fitnesses[2] < best_fitnesses[0]);
-        tr.best_fitness = best_fitnesses[2];
-        if (!tr.passed) {
-            tr.error_message = "Fitnesses: " + std::to_string(best_fitnesses[0]) + ", " +
-                             std::to_string(best_fitnesses[1]) + ", " + std::to_string(best_fitnesses[2]);
-        }
-        results.push_back(tr);
-        std::cout << "  " << (tr.passed ? "PASS" : "FAIL") << " " << tr.test_name 
-                  << " - Fitnesses: " << best_fitnesses[0] << ", " 
-                  << best_fitnesses[1] << ", " << best_fitnesses[2] << "\n";
+            return algo->run(sphere, budget, 42UL).best_fitness;
+        };
+
+        double f20 = run_with_gen(20);
+        double f50 = run_with_gen(50);
+        double f100 = run_with_gen(100);
+
+        // fitness should improve (decrease) with more generations
+        bool ok = f20 >= f50 && f50 >= f100 && f100 < f20;
+
+        Test t{"more generations improves fitness", ok,
+               "f20=" + std::to_string(f20) + " f50=" + std::to_string(f50) + " f100=" + std::to_string(f100)};
+        tests.push_back(t);
+        log(t);
     }
 
-    // Summary
-    std::cout << "\n=== Test Summary ===\n";
-    std::size_t passed = std::count_if(results.begin(), results.end(), [](const TestResult &r) { return r.passed; });
-    std::size_t failed = results.size() - passed;
-    
-    std::cout << "Total tests: " << results.size() << "\n";
-    std::cout << "Passed: " << passed << "\n";
-    std::cout << "Failed: " << failed << "\n\n";
-    
+    // summary
+    std::cout << "\nsummary\n";
+    std::size_t passed = std::count_if(tests.begin(), tests.end(), [](const Test &t) { return t.passed; });
+    std::size_t failed = tests.size() - passed;
+
+    std::cout << "  total: " << tests.size() << ", passed: " << passed << ", failed: " << failed << "\n";
+
     if (failed > 0) {
-        std::cout << "Failed tests:\n";
-        for (const auto &r : results) {
-            if (!r.passed) {
-                std::cout << "  - " << r.test_name << ": " << r.error_message << "\n";
-            }
+        std::cout << "\nfailed tests:\n";
+        for (const auto &t : tests) {
+            if (!t.passed) std::cout << "  - " << t.name << ": " << t.error << "\n";
         }
         return 1;
     }
-    
-    std::cout << "All tests passed!\n";
+
+    std::cout << "\nall tests passed\n";
     return 0;
 }
 
