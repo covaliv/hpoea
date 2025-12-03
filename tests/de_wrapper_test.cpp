@@ -2,228 +2,141 @@
 #include "hpoea/core/problem.hpp"
 #include "hpoea/core/types.hpp"
 #include "hpoea/wrappers/pagmo/de_algorithm.hpp"
+#include "hpoea/wrappers/problems/benchmark_problems.hpp"
 
-#include <algorithm>
-#include <cmath>
 #include <cstdlib>
-#include <functional>
 #include <iomanip>
 #include <iostream>
-#include <memory>
 #include <string_view>
-#include <variant>
 #include <vector>
+
+using namespace hpoea;
 
 namespace {
 
-class SphereProblem final : public hpoea::core::IProblem {
-public:
-    explicit SphereProblem(std::size_t dimension) {
-        metadata_.id = "sphere";
-        metadata_.family = "benchmark";
-        metadata_.description = "Simple sphere function";
-        dimension_ = dimension;
-        lower_bounds_.assign(dimension_, -5.0);
-        upper_bounds_.assign(dimension_, 5.0);
+const bool verbose = [] {
+    if (const char *v = std::getenv("HPOEA_LOG_RESULTS")) {
+        return std::string_view{v} == "1";
     }
+    return false;
+}();
 
-    [[nodiscard]] const hpoea::core::ProblemMetadata &metadata() const noexcept override { return metadata_; }
+const std::vector<unsigned long> seeds{42UL, 1337UL, 2024UL, 9001UL, 123456UL};
 
-    [[nodiscard]] std::size_t dimension() const override { return dimension_; }
-
-    [[nodiscard]] std::vector<double> lower_bounds() const override { return lower_bounds_; }
-
-    [[nodiscard]] std::vector<double> upper_bounds() const override { return upper_bounds_; }
-
-    [[nodiscard]] double evaluate(const std::vector<double> &decision_vector) const override {
-        double sum = 0.0;
-        for (const auto value : decision_vector) {
-            sum += value * value;
-        }
-        return sum;
-    }
-
-private:
-    hpoea::core::ProblemMetadata metadata_{};
-    std::size_t dimension_{0};
-    std::vector<double> lower_bounds_{};
-    std::vector<double> upper_bounds_{};
+struct TestCase {
+    std::string name;
+    std::unique_ptr<core::IProblem> problem;
+    core::ParameterSet params;
+    core::Budget budget;
+    double max_fitness; // worst acceptable fitness across all seeds
 };
 
-class RosenbrockProblem final : public hpoea::core::IProblem {
-public:
-    explicit RosenbrockProblem(std::size_t dimension) {
-        metadata_.id = "rosenbrock";
-        metadata_.family = "benchmark";
-        metadata_.description = "Rosenbrock valley";
-        dimension_ = dimension;
-        lower_bounds_.assign(dimension_, -5.0);
-        upper_bounds_.assign(dimension_, 10.0);
-    }
+// run test case across all seeds and return true if all pass
+bool run(pagmo_wrappers::PagmoDifferentialEvolutionFactory &factory, const TestCase &tc) {
+    double worst = 0.0;
 
-    [[nodiscard]] const hpoea::core::ProblemMetadata &metadata() const noexcept override { return metadata_; }
+    for (auto seed : seeds) {
+        auto algo = factory.create();
+        algo->configure(tc.params);
+        auto result = algo->run(*tc.problem, tc.budget, seed);
 
-    [[nodiscard]] std::size_t dimension() const override { return dimension_; }
-
-    [[nodiscard]] std::vector<double> lower_bounds() const override { return lower_bounds_; }
-
-    [[nodiscard]] std::vector<double> upper_bounds() const override { return upper_bounds_; }
-
-    [[nodiscard]] double evaluate(const std::vector<double> &decision_vector) const override {
-        double sum = 0.0;
-        for (std::size_t i = 0; i + 1 < decision_vector.size(); ++i) {
-            const double xi = decision_vector[i];
-            const double xnext = decision_vector[i + 1];
-            const double term1 = 100.0 * std::pow(xnext - xi * xi, 2);
-            const double term2 = std::pow(1.0 - xi, 2);
-            sum += term1 + term2;
+        if (result.status != core::RunStatus::Success) {
+            std::cerr << tc.name << " seed=" << seed << " failed: " << result.message << "\n";
+            return false;
         }
-        return sum;
+
+        if (result.best_solution.size() != tc.problem->dimension()) {
+            std::cerr << tc.name << " seed=" << seed << " invalid solution size\n";
+            return false;
+        }
+
+        if (tc.budget.generations && result.budget_usage.generations > *tc.budget.generations) {
+            std::cerr << tc.name << " seed=" << seed << " exceeded generation budget\n";
+            return false;
+        }
+
+        worst = std::max(worst, result.best_fitness);
+
+        if (verbose) {
+            std::cout << std::fixed << std::setprecision(6)
+                      << tc.name << " seed=" << seed
+                      << " fitness=" << result.best_fitness
+                      << " gen=" << result.budget_usage.generations
+                      << " fevals=" << result.budget_usage.function_evaluations << "\n";
+        }
     }
 
-private:
-    hpoea::core::ProblemMetadata metadata_{};
-    std::size_t dimension_{0};
-    std::vector<double> lower_bounds_{};
-    std::vector<double> upper_bounds_{};
-};
+    if (worst > tc.max_fitness) {
+        std::cerr << tc.name << " worst fitness " << worst << " exceeds limit " << tc.max_fitness << "\n";
+        return false;
+    }
+
+    if (verbose) {
+        std::cout << tc.name << " worst=" << worst << " ok\n";
+    }
+
+    return true;
+}
 
 } // namespace
 
 int main() {
-    using namespace hpoea;
-
-    const bool verbose = [] {
-        if (const char *flag = std::getenv("HPOEA_LOG_RESULTS")) {
-            return std::string_view{flag} == "1";
-        }
-        return false;
-    }();
-
     pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
-    const std::vector<unsigned long> seeds{42UL, 1337UL, 2024UL, 9001UL, 123456UL};
 
-    struct TestCase {
-        std::string name;
-        std::function<std::unique_ptr<hpoea::core::IProblem>()> make_problem;
-        core::ParameterSet parameters;
-        core::Budget budget;
-        double max_allowed_fitness{0.0};
-    };
+    std::vector<TestCase> cases;
 
-    const auto run_test_case = [&](const TestCase &test_case) -> bool {
-        double worst_fitness = 0.0;
-
-        for (const auto seed : seeds) {
-            auto problem = test_case.make_problem();
-            if (!problem) {
-                std::cerr << "Unable to construct problem for test case '" << test_case.name << "'" << '\n';
-                return false;
-            }
-
-            auto algorithm = factory.create();
-            algorithm->configure(test_case.parameters);
-
-            const auto result = algorithm->run(*problem, test_case.budget, seed);
-
-            if (result.status != core::RunStatus::Success) {
-                std::cerr << "Test case '" << test_case.name << "' failed for seed " << seed
-                          << " with error: " << result.message << '\n';
-                return false;
-            }
-
-            if (result.best_solution.size() != problem->dimension()) {
-                std::cerr << "Test case '" << test_case.name << "' returned invalid solution size for seed " << seed
-                          << '\n';
-                return false;
-            }
-
-            if (result.budget_usage.generations == 0
-                || (test_case.budget.generations.has_value()
-                    && result.budget_usage.generations > test_case.budget.generations.value())) {
-                std::cerr << "Test case '" << test_case.name << "' used unexpected generation count for seed " << seed
-                          << '\n';
-                return false;
-            }
-
-            worst_fitness = std::max(worst_fitness, result.best_fitness);
-
-            if (verbose) {
-                std::cout << std::fixed << std::setprecision(6)
-                          << "test=" << test_case.name << ", seed=" << seed
-                          << ", best_fitness=" << result.best_fitness
-                          << ", generations=" << result.budget_usage.generations
-                          << ", fevals=" << result.budget_usage.function_evaluations << '\n';
-            }
-        }
-
-        if (worst_fitness > test_case.max_allowed_fitness) {
-            std::cerr << "Test case '" << test_case.name << "' worst fitness too large: " << worst_fitness << '\n';
-            return false;
-        }
-
-        if (verbose) {
-            std::cout << "test=" << test_case.name << ", worst_fitness=" << worst_fitness << '\n';
-        }
-
-        return true;
-    };
-
-    std::vector<TestCase> test_cases;
-
+    // sphere 10d
     {
-        core::ParameterSet params;
-        params.emplace("population_size", static_cast<std::int64_t>(120));
-        params.emplace("generations", static_cast<std::int64_t>(350));
-        params.emplace("scaling_factor", 0.7);
-        params.emplace("crossover_rate", 0.9);
-
-        core::Budget budget;
-        budget.generations = 400;
-        budget.function_evaluations = 50000;
-
-        test_cases.push_back(TestCase{
-            "sphere",
-            [] { return std::make_unique<SphereProblem>(10); },
-            std::move(params),
-            budget,
-            5e-3});
+        TestCase tc;
+        tc.name = "sphere";
+        tc.problem = std::make_unique<wrappers::problems::SphereProblem>(10);
+        tc.params.emplace("population_size", static_cast<std::int64_t>(120));
+        tc.params.emplace("generations", static_cast<std::int64_t>(350));
+        tc.params.emplace("scaling_factor", 0.7);
+        tc.params.emplace("crossover_rate", 0.9);
+        tc.budget.generations = 400;
+        tc.budget.function_evaluations = 50000;
+        tc.max_fitness = 5e-3;
+        cases.push_back(std::move(tc));
     }
 
+    // rosenbrock 6d
+    // harder sowe allow more budget
     {
-        core::ParameterSet params;
-        params.emplace("population_size", static_cast<std::int64_t>(150));
-        params.emplace("generations", static_cast<std::int64_t>(500));
-        params.emplace("scaling_factor", 0.6);
-        params.emplace("crossover_rate", 0.85);
-
-        core::Budget budget;
-        budget.generations = 600;
-        budget.function_evaluations = 80000;
-
-        test_cases.push_back(TestCase{
-            "rosenbrock",
-            [] { return std::make_unique<RosenbrockProblem>(6); },
-            std::move(params),
-            budget,
-            1.0});
+        TestCase tc;
+        tc.name = "rosenbrock";
+        tc.problem = std::make_unique<wrappers::problems::RosenbrockProblem>(6);
+        tc.params.emplace("population_size", static_cast<std::int64_t>(150));
+        tc.params.emplace("generations", static_cast<std::int64_t>(500));
+        tc.params.emplace("scaling_factor", 0.6);
+        tc.params.emplace("crossover_rate", 0.85);
+        tc.budget.generations = 600;
+        tc.budget.function_evaluations = 80000;
+        tc.max_fitness = 1.0;
+        cases.push_back(std::move(tc));
     }
 
-    for (const auto &test_case : test_cases) {
-        if (!run_test_case(test_case)) {
+    // run all test cases
+    for (const auto &tc : cases) {
+        if (!run(factory, tc)) {
             return 1;
         }
     }
 
-    auto algorithm = factory.create();
-    try {
+    // test parameter validation
+    // should reject invalid variant
+    {
+        auto algo = factory.create();
         core::ParameterSet invalid;
-        invalid.emplace("variant", static_cast<std::int64_t>(0));
-        algorithm->configure(invalid);
-        std::cerr << "Expected ParameterValidationError for invalid variant" << '\n';
-        return 5;
-    } catch (const core::ParameterValidationError &) {
-        // Expected
+        invalid.emplace("variant", static_cast<std::int64_t>(0)); // out of range
+
+        try {
+            algo->configure(invalid);
+            std::cerr << "expected ParameterValidationError for invalid variant\n";
+            return 1;
+        } catch (const core::ParameterValidationError &) {
+            // expected
+        }
     }
 
     return 0;
