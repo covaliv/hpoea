@@ -8,7 +8,7 @@
 #include <cmath>
 #include <limits>
 #include <pagmo/algorithm.hpp>
-#include <pagmo/algorithms/compass_search.hpp>
+#include <pagmo/algorithms/nlopt.hpp>
 #include <pagmo/population.hpp>
 #include <pagmo/problem.hpp>
 #include <memory>
@@ -34,7 +34,7 @@ using hpoea::core::ParameterValidationError;
 using hpoea::core::RunStatus;
 
 constexpr std::string_view kFamily = "NelderMead";
-constexpr std::string_view kImplementation = "pagmo::compass_search";
+constexpr std::string_view kImplementation = "nlopt::neldermead";
 constexpr std::string_view kVersion = "2.x";
 
 ParameterSpace make_parameter_space() {
@@ -47,26 +47,19 @@ ParameterSpace make_parameter_space() {
     max_fevals.default_value = static_cast<std::int64_t>(1000);
     space.add_descriptor(max_fevals);
 
-    ParameterDescriptor start_range;
-    start_range.name = "start_range";
-    start_range.type = ParameterType::Continuous;
-    start_range.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
-    start_range.default_value = 0.1;
-    space.add_descriptor(start_range);
+    ParameterDescriptor xtol_rel;
+    xtol_rel.name = "xtol_rel";
+    xtol_rel.type = ParameterType::Continuous;
+    xtol_rel.continuous_range = hpoea::core::ContinuousRange{1e-15, 1e-1};
+    xtol_rel.default_value = 1e-8;
+    space.add_descriptor(xtol_rel);
 
-    ParameterDescriptor stop_range;
-    stop_range.name = "stop_range";
-    stop_range.type = ParameterType::Continuous;
-    stop_range.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
-    stop_range.default_value = 0.01;
-    space.add_descriptor(stop_range);
-
-    ParameterDescriptor reduction_coeff;
-    reduction_coeff.name = "reduction_coeff";
-    reduction_coeff.type = ParameterType::Continuous;
-    reduction_coeff.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
-    reduction_coeff.default_value = 0.5;
-    space.add_descriptor(reduction_coeff);
+    ParameterDescriptor ftol_rel;
+    ftol_rel.name = "ftol_rel";
+    ftol_rel.type = ParameterType::Continuous;
+    ftol_rel.continuous_range = hpoea::core::ContinuousRange{1e-15, 1e-1};
+    ftol_rel.default_value = 1e-8;
+    space.add_descriptor(ftol_rel);
 
     return space;
 }
@@ -274,14 +267,16 @@ core::HyperparameterOptimizationResult PagmoNelderMeadHyperOptimizer::optimize(
             max_fevals = std::min<unsigned>(max_fevals, static_cast<unsigned>(budget.function_evaluations.value()));
         }
 
-        const auto start_range = std::get<double>(configured_parameters_.at("start_range"));
-        const auto stop_range = std::get<double>(configured_parameters_.at("stop_range"));
-        const auto reduction_coeff = std::get<double>(configured_parameters_.at("reduction_coeff"));
+        const auto xtol_rel = std::get<double>(configured_parameters_.at("xtol_rel"));
+        const auto ftol_rel = std::get<double>(configured_parameters_.at("ftol_rel"));
 
         const auto seed32 = static_cast<unsigned>(seed & std::numeric_limits<unsigned>::max());
 
-        pagmo::compass_search cs_alg(max_fevals, start_range, stop_range, reduction_coeff);
-        pagmo::algorithm algorithm{cs_alg};
+        pagmo::nlopt nm_alg("neldermead");
+        nm_alg.set_maxeval(static_cast<int>(max_fevals));
+        nm_alg.set_xtol_rel(xtol_rel);
+        nm_alg.set_ftol_rel(ftol_rel);
+        pagmo::algorithm algorithm{nm_alg};
 
         const auto dimension = lower.size();
         const auto population_size = static_cast<pagmo::population::size_type>(dimension + 1);
