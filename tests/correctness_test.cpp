@@ -1,6 +1,3 @@
-// correctness tests for hpoea framework
-// validates ea wrappers, hoa optimizers, parameter handling, and convergence
-
 #include "hpoea/core/experiment.hpp"
 #include "hpoea/core/logging.hpp"
 #include "hpoea/wrappers/pagmo/cmaes_hyper.hpp"
