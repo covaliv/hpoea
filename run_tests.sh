@@ -2,7 +2,7 @@
 
 set -e
 
-echo "=== HPOEA Framework Test Suite ==="
+echo "-Test Suite-"
 echo ""
 
 if [ ! -d "build" ]; then
@@ -18,61 +18,43 @@ if [ ! -f "CMakeCache.txt" ]; then
 fi
 
 echo "building tests..."
-cmake --build . --target hpoea_de_wrapper_test hpoea_pso_wrapper_test hpoea_sade_wrapper_test \
-    hpoea_cmaes_hyper_test hpoea_sa_hyper_test hpoea_pso_hyper_test hpoea_nm_hyper_test \
-    hpoea_benchmark_problems_test hpoea_parallel_experiment_test hpoea_integration_test \
-    hpoea_benchmark_suite
+cmake --build . --target hpoea_wrapper_test hpoea_hyper_test \
+    hpoea_benchmark_problems_test hpoea_parallel_experiment_test \
+    hpoea_integration_test hpoea_benchmark_suite hpoea_correctness_test
 
 echo ""
 echo "=== Running Tests ==="
-echo ""
-
-echo "1. running EA wrapper tests..."
-echo "   - DE wrapper test"
-./tests/hpoea_de_wrapper_test || echo "   warning: DE test failed"
-
-echo "   - PSO wrapper test"
-./tests/hpoea_pso_wrapper_test || echo "   warning: PSO test failed"
-
-echo "   - SADE wrapper test"
-./tests/hpoea_sade_wrapper_test || echo "   warning: SADE test failed"
 
 echo ""
-echo "2. running problem tests..."
-echo "   - benchmark problems test"
-./tests/hpoea_benchmark_problems_test || echo "   warning: benchmark problems test failed"
+echo "1. wrapper tests (de, pso, sade)"
+./tests/hpoea_wrapper_test || exit 1
 
 echo ""
-echo "3. running HOA tests..."
-echo "   - CMA-ES hyper optimizer test"
-HPOEA_RUN_CMAES_TESTS=1 ./tests/hpoea_cmaes_hyper_test || echo "   warning: CMA-ES test failed"
-
-echo "   - simulated annealing hyper optimizer test"
-HPOEA_RUN_SA_TESTS=1 ./tests/hpoea_sa_hyper_test || echo "   warning: SA test failed"
-
-echo "   - PSO hyper optimizer test"
-HPOEA_RUN_PSO_HYPER_TESTS=1 ./tests/hpoea_pso_hyper_test || echo "   warning: PSO hyper test failed"
-
-echo "   - nelder-mead hyper optimizer test"
-HPOEA_RUN_NM_TESTS=1 ./tests/hpoea_nm_hyper_test || echo "   warning: nelder-mead test failed"
+echo "2. hyper optimizer tests (cmaes, sa, pso, nm)"
+./tests/hpoea_hyper_test || exit 1
 
 echo ""
-echo "4. running experiment manager tests..."
-echo "   - parallel experiment test"
-HPOEA_RUN_PARALLEL_TESTS=1 ./tests/hpoea_parallel_experiment_test || echo "   warning: parallel experiment test failed"
+echo "3. benchmark problems"
+./tests/hpoea_benchmark_problems_test || exit 1
 
 echo ""
-echo "5. running integration test..."
-./tests/hpoea_integration_test || echo "   warning: integration test failed"
+echo "4. parallel experiments"
+HPOEA_RUN_PARALLEL_TESTS=1 ./tests/hpoea_parallel_experiment_test || exit 1
 
 echo ""
-echo "6. running benchmark suite..."
-HPOEA_RUN_CMAES_TESTS=1 HPOEA_RUN_SA_TESTS=1 HPOEA_RUN_PSO_HYPER_TESTS=1 \
-    ./tests/hpoea_benchmark_suite || echo "   warning: benchmark suite failed"
+echo "5. integration test"
+./tests/hpoea_integration_test || exit 1
 
 echo ""
-echo "=== Test Suite Complete ==="
+echo "6. correctness test"
+./tests/hpoea_correctness_test || exit 1
+
 echo ""
-echo "to run tests with verbose output, set HPOEA_LOG_RESULTS=1"
-echo "example: HPOEA_LOG_RESULTS=1 ./tests/hpoea_de_wrapper_test"
+echo "7. benchmark suite"
+./tests/hpoea_benchmark_suite || exit 1
+
+echo ""
+echo "=== All Tests Passed ==="
+echo ""
+echo "verbose output: HPOEA_LOG_RESULTS=1 ./tests/hpoea_wrapper_test"
 
