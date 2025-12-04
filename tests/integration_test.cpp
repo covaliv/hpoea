@@ -70,9 +70,8 @@ int main() {
                         hoa_params.emplace("variant", static_cast<std::int64_t>(5));
                     } else if (hoa_name == "Nelder-Mead") {
                         hoa_params.emplace("max_fevals", static_cast<std::int64_t>(50));
-                        hoa_params.emplace("start_range", 0.1);
-                        hoa_params.emplace("stop_range", 0.01);
-                        hoa_params.emplace("reduction_coeff", 0.5);
+                        hoa_params.emplace("xtol_rel", 1e-6);
+                        hoa_params.emplace("ftol_rel", 1e-6);
                     }
                     hoa->configure(hoa_params);
 
