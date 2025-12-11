@@ -45,7 +45,7 @@ ParameterSpace make_parameter_space() {
     ParameterDescriptor generations;
     generations.name = "generations";
     generations.type = ParameterType::Integer;
-    generations.integer_range = hpoea::core::IntegerRange{1, 100000};
+    generations.integer_range = hpoea::core::IntegerRange{1, 1000};
     generations.default_value = static_cast<std::int64_t>(200);
     space.add_descriptor(generations);
 
