@@ -133,10 +133,10 @@ core::HyperparameterOptimizationResult PagmoNelderMeadHyperOptimizer::optimize(
     result.trials = context->trials ? std::move(*context->trials)
                                     : std::vector<HyperparameterTrialRecord>{};
 
-    if (context->best_trial.has_value()) {
-      result.best_parameters = context->best_trial->parameters;
-      result.best_objective =
-          context->best_trial->optimization_result.best_fitness;
+    const auto best_trial = context->get_best_trial();
+    if (best_trial.has_value()) {
+      result.best_parameters = best_trial->parameters;
+      result.best_objective = best_trial->optimization_result.best_fitness;
     } else {
       result.best_objective = population.champion_f()[0];
     }
@@ -145,7 +145,7 @@ core::HyperparameterOptimizationResult PagmoNelderMeadHyperOptimizer::optimize(
         std::chrono::duration_cast<std::chrono::milliseconds>(end_time -
                                                               start_time);
     result.budget_usage.generations = 1;
-    result.budget_usage.function_evaluations = context->evaluations;
+    result.budget_usage.function_evaluations = context->get_evaluations();
     result.effective_optimizer_parameters = configured_parameters_;
     result.message = "Hyperparameter optimization completed.";
   } catch (const std::exception &ex) {

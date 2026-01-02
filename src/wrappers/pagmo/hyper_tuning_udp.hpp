@@ -28,6 +28,17 @@ struct HyperTuningUdp {
     mutable std::optional<core::HyperparameterTrialRecord> best_trial;
     mutable std::size_t evaluations{0};
     mutable std::mutex mutex;
+
+    [[nodiscard]] std::optional<core::HyperparameterTrialRecord>
+    get_best_trial() const {
+      std::scoped_lock lock(mutex);
+      return best_trial;
+    }
+
+    [[nodiscard]] std::size_t get_evaluations() const {
+      std::scoped_lock lock(mutex);
+      return evaluations;
+    }
   };
 
   HyperTuningUdp() = default;
