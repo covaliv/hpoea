@@ -47,29 +47,29 @@ ParameterSpace make_parameter_space() {
   ParameterDescriptor cc;
   cc.name = "cc";
   cc.type = ParameterType::Continuous;
-  cc.continuous_range = hpoea::core::ContinuousRange{-1.0, 1.0};
-  cc.default_value = -1.0;
+  cc.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
+  cc.default_value = 0.4;
   space.add_descriptor(cc);
 
   ParameterDescriptor cs;
   cs.name = "cs";
   cs.type = ParameterType::Continuous;
-  cs.continuous_range = hpoea::core::ContinuousRange{-1.0, 1.0};
-  cs.default_value = -1.0;
+  cs.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
+  cs.default_value = 0.3;
   space.add_descriptor(cs);
 
   ParameterDescriptor c1;
   c1.name = "c1";
   c1.type = ParameterType::Continuous;
-  c1.continuous_range = hpoea::core::ContinuousRange{-1.0, 1.0};
-  c1.default_value = -1.0;
+  c1.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
+  c1.default_value = 0.05;
   space.add_descriptor(c1);
 
   ParameterDescriptor cmu;
   cmu.name = "cmu";
   cmu.type = ParameterType::Continuous;
-  cmu.continuous_range = hpoea::core::ContinuousRange{-1.0, 1.0};
-  cmu.default_value = -1.0;
+  cmu.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
+  cmu.default_value = 0.1;
   space.add_descriptor(cmu);
 
   ParameterDescriptor ftol;
