@@ -157,14 +157,20 @@ OptimizationResult PagmoDifferentialEvolution::run(const core::IProblem &problem
         population = algorithm.evolve(population);
         const auto end_time = std::chrono::steady_clock::now();
 
-        result.status = core::RunStatus::Success;
         result.best_fitness = population.champion_f()[0];
         result.best_solution = population.champion_x();
         result.budget_usage.function_evaluations = population_size * generations;
         result.budget_usage.generations = generations;
         result.budget_usage.wall_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         result.effective_parameters = std::move(effective_parameters);
-        result.message = "Optimization completed.";
+
+        if (budget.wall_time.has_value() && result.budget_usage.wall_time > budget.wall_time.value()) {
+            result.status = core::RunStatus::BudgetExceeded;
+            result.message = "wall-time budget exceeded";
+        } else {
+            result.status = core::RunStatus::Success;
+            result.message = "optimization completed";
+        }
 
     } catch (const std::exception &ex) {
         result.status = core::RunStatus::InternalError;
