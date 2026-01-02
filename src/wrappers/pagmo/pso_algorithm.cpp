@@ -49,14 +49,14 @@ ParameterSpace make_parameter_space() {
     ParameterDescriptor eta1;
     eta1.name = "eta1";
     eta1.type = ParameterType::Continuous;
-    eta1.continuous_range = hpoea::core::ContinuousRange{0.0, 5.0};
+    eta1.continuous_range = hpoea::core::ContinuousRange{1.0, 3.0};
     eta1.default_value = 2.05;
     space.add_descriptor(eta1);
 
     ParameterDescriptor eta2;
     eta2.name = "eta2";
     eta2.type = ParameterType::Continuous;
-    eta2.continuous_range = hpoea::core::ContinuousRange{0.0, 5.0};
+    eta2.continuous_range = hpoea::core::ContinuousRange{1.0, 3.0};
     eta2.default_value = 2.05;
     space.add_descriptor(eta2);
 
