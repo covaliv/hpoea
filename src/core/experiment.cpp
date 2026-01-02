@@ -34,8 +34,13 @@ ExperimentResult SequentialExperimentManager::run_experiment(const ExperimentCon
 
     optimizer.configure(optimizer_parameters);
 
-    std::random_device device;
-    std::mt19937 rng(device());
+    std::mt19937 rng;
+    if (config.random_seed.has_value()) {
+        rng.seed(config.random_seed.value());
+    } else {
+        std::random_device device;
+        rng.seed(device());
+    }
 
     for (std::size_t trial = 0; trial < config.trials_per_optimizer; ++trial) {
         const unsigned long optimizer_seed = static_cast<unsigned long>(rng());
@@ -101,8 +106,13 @@ ExperimentResult ParallelExperimentManager::run_experiment(const ExperimentConfi
 
     optimizer.configure(optimizer_parameters);
 
-    std::random_device device;
-    std::mt19937 rng(device());
+    std::mt19937 rng;
+    if (config.random_seed.has_value()) {
+        rng.seed(config.random_seed.value());
+    } else {
+        std::random_device device;
+        rng.seed(device());
+    }
     std::vector<unsigned long> seeds;
     seeds.reserve(config.trials_per_optimizer);
     for (std::size_t i = 0; i < config.trials_per_optimizer; ++i) {

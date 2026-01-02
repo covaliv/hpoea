@@ -20,6 +20,7 @@ struct ExperimentConfig {
     std::optional<ParameterSet> optimizer_parameters;
     std::optional<ParameterSet> algorithm_baseline_parameters;
     std::filesystem::path log_file_path;
+    std::optional<unsigned long> random_seed;
 };
 
 struct ExperimentResult {
