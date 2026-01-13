@@ -4,6 +4,7 @@
 #include "hpoea/core/hyperparameter_optimizer.hpp"
 #include "hpoea/core/parameters.hpp"
 #include "hpoea/core/problem.hpp"
+#include "hpoea/core/search_space.hpp"
 #include "hpoea/core/types.hpp"
 
 #include <algorithm>
@@ -25,6 +26,7 @@ struct HyperTuningUdp {
     core::Budget algorithm_budget;
     unsigned long base_seed{0};
     std::shared_ptr<std::vector<core::HyperparameterTrialRecord>> trials;
+    std::shared_ptr<core::SearchSpace> search_space;
     mutable std::optional<core::HyperparameterTrialRecord> best_trial;
     mutable std::size_t evaluations{0};
     mutable std::mutex mutex;
@@ -63,19 +65,52 @@ struct HyperTuningUdp {
     upper.reserve(descriptors.size());
 
     for (const auto &descriptor : descriptors) {
+      const core::ParameterConfig *config = nullptr;
+      if (ctx.search_space) {
+        config = ctx.search_space->get(descriptor.name);
+      }
+
+      if (config) {
+        if (config->mode == core::SearchMode::fixed ||
+            config->mode == core::SearchMode::exclude) {
+          continue;
+        }
+      }
+
       switch (descriptor.type) {
       case core::ParameterType::Continuous: {
-        const auto range = descriptor.continuous_range.value_or(
+        auto range = descriptor.continuous_range.value_or(
             core::ContinuousRange{-1.0, 1.0});
-        lower.push_back(range.lower);
-        upper.push_back(range.upper);
+        core::Transform transform = core::Transform::none;
+
+        if (config) {
+          if (config->continuous_bounds.has_value()) {
+            range = config->continuous_bounds.value();
+          }
+          transform = config->transform;
+        }
+
+        const auto transformed = core::transform_bounds(range, transform);
+        lower.push_back(transformed.lower);
+        upper.push_back(transformed.upper);
         break;
       }
       case core::ParameterType::Integer: {
-        const auto range =
-            descriptor.integer_range.value_or(core::IntegerRange{-100, 100});
-        lower.push_back(static_cast<double>(range.lower));
-        upper.push_back(static_cast<double>(range.upper));
+        if (config && !config->discrete_choices.empty()) {
+          lower.push_back(0.0);
+          upper.push_back(
+              static_cast<double>(config->discrete_choices.size() - 1));
+        } else {
+          auto range =
+              descriptor.integer_range.value_or(core::IntegerRange{-100, 100});
+
+          if (config && config->integer_bounds.has_value()) {
+            range = config->integer_bounds.value();
+          }
+
+          lower.push_back(static_cast<double>(range.lower));
+          upper.push_back(static_cast<double>(range.upper));
+        }
         break;
       }
       case core::ParameterType::Boolean: {
@@ -84,12 +119,24 @@ struct HyperTuningUdp {
         break;
       }
       case core::ParameterType::Categorical: {
-        lower.push_back(0.0);
-        upper.push_back(
-            static_cast<double>(descriptor.categorical_choices.size() - 1));
+        if (config && !config->discrete_choices.empty()) {
+          lower.push_back(0.0);
+          upper.push_back(
+              static_cast<double>(config->discrete_choices.size() - 1));
+        } else {
+          lower.push_back(0.0);
+          upper.push_back(
+              static_cast<double>(descriptor.categorical_choices.size() - 1));
+        }
         break;
       }
       }
+    }
+
+    if (lower.empty()) {
+      throw core::ParameterValidationError(
+          "All parameters are fixed or excluded. At least one parameter "
+          "must be optimized.");
     }
 
     return {lower, upper};
@@ -104,27 +151,65 @@ struct HyperTuningUdp {
     core::ParameterSet parameters;
     parameters.reserve(descriptors.size());
 
-    for (std::size_t index = 0; index < descriptors.size(); ++index) {
-      const auto &descriptor = descriptors[index];
-      const auto value = candidate[index];
+    std::size_t candidate_index = 0;
+
+    for (const auto &descriptor : descriptors) {
+      const core::ParameterConfig *config = nullptr;
+      if (ctx.search_space) {
+        config = ctx.search_space->get(descriptor.name);
+      }
+
+      if (config) {
+        if (config->mode == core::SearchMode::fixed) {
+          if (config->fixed_value.has_value()) {
+            parameters.emplace(descriptor.name, config->fixed_value.value());
+          }
+          continue;
+        }
+        if (config->mode == core::SearchMode::exclude) {
+          continue;
+        }
+      }
+
+      const auto value = candidate[candidate_index++];
 
       switch (descriptor.type) {
       case core::ParameterType::Continuous: {
-        double numeric = value;
-        if (descriptor.continuous_range.has_value()) {
-          numeric = std::clamp(numeric, descriptor.continuous_range->lower,
-                               descriptor.continuous_range->upper);
+        auto range = descriptor.continuous_range.value_or(
+            core::ContinuousRange{-1e10, 1e10});
+        core::Transform transform = core::Transform::none;
+
+        if (config) {
+          if (config->continuous_bounds.has_value()) {
+            range = config->continuous_bounds.value();
+          }
+          transform = config->transform;
         }
+
+        double numeric = core::apply_transform(value, transform);
+        numeric = std::clamp(numeric, range.lower, range.upper);
         parameters.emplace(descriptor.name, numeric);
         break;
       }
       case core::ParameterType::Integer: {
-        auto rounded = static_cast<std::int64_t>(std::llround(value));
-        if (descriptor.integer_range.has_value()) {
-          rounded = std::clamp(rounded, descriptor.integer_range->lower,
-                               descriptor.integer_range->upper);
+        if (config && !config->discrete_choices.empty()) {
+          const auto &choices = config->discrete_choices;
+          auto index_value = static_cast<std::size_t>(
+              std::clamp<std::int64_t>(std::llround(value), 0,
+                                       static_cast<std::int64_t>(choices.size() - 1)));
+          parameters.emplace(descriptor.name, choices[index_value]);
+        } else {
+          auto range =
+              descriptor.integer_range.value_or(core::IntegerRange{-100, 100});
+
+          if (config && config->integer_bounds.has_value()) {
+            range = config->integer_bounds.value();
+          }
+
+          auto rounded = static_cast<std::int64_t>(std::llround(value));
+          rounded = std::clamp(rounded, range.lower, range.upper);
+          parameters.emplace(descriptor.name, rounded);
         }
-        parameters.emplace(descriptor.name, rounded);
         break;
       }
       case core::ParameterType::Boolean: {
@@ -132,16 +217,23 @@ struct HyperTuningUdp {
         break;
       }
       case core::ParameterType::Categorical: {
-        const auto &choices = descriptor.categorical_choices;
-        if (choices.empty()) {
-          throw core::ParameterValidationError(
-              "Categorical descriptor without choices: " + descriptor.name);
+        if (config && !config->discrete_choices.empty()) {
+          const auto &choices = config->discrete_choices;
+          auto index_value = static_cast<std::size_t>(
+              std::clamp<std::int64_t>(std::llround(value), 0,
+                                       static_cast<std::int64_t>(choices.size() - 1)));
+          parameters.emplace(descriptor.name, choices[index_value]);
+        } else {
+          const auto &choices = descriptor.categorical_choices;
+          if (choices.empty()) {
+            throw core::ParameterValidationError(
+                "Categorical descriptor without choices: " + descriptor.name);
+          }
+          auto index_value = static_cast<std::size_t>(
+              std::clamp<std::int64_t>(std::llround(value), 0,
+                                       static_cast<std::int64_t>(choices.size() - 1)));
+          parameters.emplace(descriptor.name, choices[index_value]);
         }
-        auto index_value = static_cast<std::int64_t>(std::llround(value));
-        index_value = std::clamp<std::int64_t>(
-            index_value, 0, static_cast<std::int64_t>(choices.size() - 1));
-        parameters.emplace(descriptor.name,
-                           choices[static_cast<std::size_t>(index_value)]);
         break;
       }
       }
