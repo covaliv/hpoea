@@ -38,4 +38,9 @@ target_link_libraries(hpoea_correctness_test PRIVATE hpoea_pagmo hpoea_core)
 target_compile_features(hpoea_correctness_test PRIVATE cxx_std_20)
 add_test(NAME hpoea_correctness_test COMMAND hpoea_correctness_test)
 
+add_executable(hpoea_search_space_test search_space_test.cpp)
+target_link_libraries(hpoea_search_space_test PRIVATE hpoea_pagmo hpoea_core)
+target_compile_features(hpoea_search_space_test PRIVATE cxx_std_20)
+add_test(NAME hpoea_search_space_test COMMAND hpoea_search_space_test)
+
 
