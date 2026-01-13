@@ -104,6 +104,11 @@ void PagmoSimulatedAnnealingHyperOptimizer::configure(
   configured_parameters_ = parameter_space_.apply_defaults(parameters);
 }
 
+void PagmoSimulatedAnnealingHyperOptimizer::set_search_space(
+    std::shared_ptr<core::SearchSpace> search_space) {
+  search_space_ = std::move(search_space);
+}
+
 core::HyperparameterOptimizationResult
 PagmoSimulatedAnnealingHyperOptimizer::optimize(
     const core::IEvolutionaryAlgorithmFactory &algorithm_factory,
@@ -121,6 +126,7 @@ PagmoSimulatedAnnealingHyperOptimizer::optimize(
     context->base_seed = seed;
     context->trials =
         std::make_shared<std::vector<HyperparameterTrialRecord>>();
+    context->search_space = search_space_;
 
     HyperTuningUdp udp{context};
 
