@@ -174,6 +174,181 @@ bool test_validation() {
   return true;
 }
 
+bool test_transform_validation() {
+  std::cout << "  transform bounds validation\n";
+
+  // log with zero lower bound should throw
+  try {
+    core::SearchSpace space;
+    space.optimize("param", core::ContinuousRange{0.0, 1.0}, core::Transform::log);
+    std::cerr << "    log with zero lower bound should throw\n";
+    return false;
+  } catch (const core::ParameterValidationError &) {
+    // expected
+  }
+
+  // log with negative lower bound should throw
+  try {
+    core::SearchSpace space;
+    space.optimize("param", core::ContinuousRange{-1.0, 1.0}, core::Transform::log);
+    std::cerr << "    log with negative lower bound should throw\n";
+    return false;
+  } catch (const core::ParameterValidationError &) {
+    // expected
+  }
+
+  // sqrt with negative lower bound should throw
+  try {
+    core::SearchSpace space;
+    space.optimize("param", core::ContinuousRange{-1.0, 1.0}, core::Transform::sqrt);
+    std::cerr << "    sqrt with negative lower bound should throw\n";
+    return false;
+  } catch (const core::ParameterValidationError &) {
+    // expected
+  }
+
+  // sqrt with zero is fine
+  try {
+    core::SearchSpace space;
+    space.optimize("param", core::ContinuousRange{0.0, 1.0}, core::Transform::sqrt);
+  } catch (const core::ParameterValidationError &e) {
+    std::cerr << "    sqrt with zero should be fine: " << e.what() << "\n";
+    return false;
+  }
+
+  return true;
+}
+
+bool test_bounds_validation() {
+  std::cout << "  bounds validation\n";
+
+  // lower > upper should throw
+  try {
+    core::SearchSpace space;
+    space.optimize("param", core::ContinuousRange{10.0, 1.0});
+    std::cerr << "    lower > upper should throw\n";
+    return false;
+  } catch (const core::ParameterValidationError &) {
+    // expected
+  }
+
+  // integer lower > upper should throw
+  try {
+    core::SearchSpace space;
+    space.optimize("param", core::IntegerRange{10, 1});
+    std::cerr << "    integer lower > upper should throw\n";
+    return false;
+  } catch (const core::ParameterValidationError &) {
+    // expected
+  }
+
+  // empty choices should throw
+  try {
+    core::SearchSpace space;
+    space.optimize_choices("param", {});
+    std::cerr << "    empty choices should throw\n";
+    return false;
+  } catch (const core::ParameterValidationError &) {
+    // expected
+  }
+
+  return true;
+}
+
+bool test_validate_and_clamp() {
+  std::cout << "  validate and clamp\n";
+
+  core::ParameterSpace param_space;
+
+  core::ParameterDescriptor desc;
+  desc.name = "param";
+  desc.type = core::ParameterType::Continuous;
+  desc.continuous_range = core::ContinuousRange{0.0, 1.0};
+  param_space.add_descriptor(desc);
+
+  core::SearchSpace search;
+  search.optimize("param", core::ContinuousRange{-0.5, 1.5});
+
+  search.validate_and_clamp(param_space);
+
+  const auto *config = search.get("param");
+  if (!config || !config->continuous_bounds) {
+    std::cerr << "    config missing after clamp\n";
+    return false;
+  }
+
+  if (config->continuous_bounds->lower != 0.0 ||
+      config->continuous_bounds->upper != 1.0) {
+    std::cerr << "    bounds not clamped correctly: ["
+              << config->continuous_bounds->lower << ", "
+              << config->continuous_bounds->upper << "]\n";
+    return false;
+  }
+
+  return true;
+}
+
+bool test_effective_bounds() {
+  std::cout << "  effective bounds inspection\n";
+
+  core::ParameterSpace param_space;
+
+  core::ParameterDescriptor desc_a;
+  desc_a.name = "param_a";
+  desc_a.type = core::ParameterType::Continuous;
+  desc_a.continuous_range = core::ContinuousRange{0.0, 10.0};
+  param_space.add_descriptor(desc_a);
+
+  core::ParameterDescriptor desc_b;
+  desc_b.name = "param_b";
+  desc_b.type = core::ParameterType::Integer;
+  desc_b.integer_range = core::IntegerRange{1, 100};
+  param_space.add_descriptor(desc_b);
+
+  core::SearchSpace search;
+  search.fix("param_a", 5.0);
+
+  auto bounds = search.get_effective_bounds(param_space);
+  if (bounds.size() != 2) {
+    std::cerr << "    expected 2 effective bounds\n";
+    return false;
+  }
+
+  auto dim = search.get_optimization_dimension(param_space);
+  if (dim != 1) {
+    std::cerr << "    expected 1 optimization dimension, got " << dim << "\n";
+    return false;
+  }
+
+  return true;
+}
+
+bool test_fixed_value_validation() {
+  std::cout << "  fixed value validation\n";
+
+  core::ParameterSpace param_space;
+
+  core::ParameterDescriptor desc;
+  desc.name = "param";
+  desc.type = core::ParameterType::Continuous;
+  desc.continuous_range = core::ContinuousRange{0.0, 1.0};
+  param_space.add_descriptor(desc);
+
+  // fixed value outside range should throw
+  core::SearchSpace search;
+  search.fix("param", 5.0);
+
+  try {
+    search.validate(param_space);
+    std::cerr << "    fixed value outside range should throw\n";
+    return false;
+  } catch (const core::ParameterValidationError &) {
+    // expected
+  }
+
+  return true;
+}
+
 bool test_integration_fixed_param() {
   std::cout << "  integration: fixed parameters\n";
 
@@ -281,6 +456,16 @@ int main() {
   if (!test_transforms())
     failures++;
   if (!test_validation())
+    failures++;
+  if (!test_transform_validation())
+    failures++;
+  if (!test_bounds_validation())
+    failures++;
+  if (!test_validate_and_clamp())
+    failures++;
+  if (!test_effective_bounds())
+    failures++;
+  if (!test_fixed_value_validation())
     failures++;
   if (!test_integration_fixed_param())
     failures++;

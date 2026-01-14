@@ -31,6 +31,16 @@ struct ParameterConfig {
   Transform transform{Transform::none};
 };
 
+struct EffectiveBounds {
+  std::string name;
+  ParameterType type;
+  SearchMode mode;
+  std::optional<ContinuousRange> continuous_bounds;
+  std::optional<IntegerRange> integer_bounds;
+  std::size_t discrete_choice_count{0};
+  Transform transform{Transform::none};
+};
+
 class SearchSpace {
 public:
   SearchSpace() = default;
@@ -51,6 +61,13 @@ public:
   [[nodiscard]] bool empty() const noexcept;
 
   void validate(const ParameterSpace &space) const;
+  void validate_and_clamp(const ParameterSpace &space);
+
+  [[nodiscard]] std::vector<EffectiveBounds>
+  get_effective_bounds(const ParameterSpace &space) const;
+
+  [[nodiscard]] std::size_t
+  get_optimization_dimension(const ParameterSpace &space) const;
 
 private:
   std::unordered_map<std::string, ParameterConfig> configs_;
@@ -59,5 +76,10 @@ private:
 [[nodiscard]] double apply_transform(double value, Transform transform);
 [[nodiscard]] ContinuousRange transform_bounds(ContinuousRange bounds,
                                                Transform transform);
+void validate_transform_bounds(ContinuousRange bounds, Transform transform);
+[[nodiscard]] ContinuousRange clamp_bounds(ContinuousRange custom,
+                                           ContinuousRange constraint);
+[[nodiscard]] IntegerRange clamp_bounds(IntegerRange custom,
+                                        IntegerRange constraint);
 
 } // namespace hpoea::core
