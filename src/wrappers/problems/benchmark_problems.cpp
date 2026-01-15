@@ -27,6 +27,8 @@ void validate_dimension(std::size_t dim, const char *problem_name) {
 namespace hpoea::wrappers::problems {
 
 SphereProblem::SphereProblem(std::size_t dimension, double lower_bound, double upper_bound) {
+    validate_dimension(dimension, "sphere");
+    validate_bounds(lower_bound, upper_bound, "sphere");
     metadata_.id = "sphere";
     metadata_.family = "benchmark";
     metadata_.description = "Sphere function (unimodal, separable)";
@@ -47,6 +49,10 @@ double SphereProblem::evaluate(const std::vector<double> &decision_vector) const
 }
 
 RosenbrockProblem::RosenbrockProblem(std::size_t dimension, double lower_bound, double upper_bound) {
+    if (dimension < 2) {
+        throw std::invalid_argument("rosenbrock: dimension must be at least 2");
+    }
+    validate_bounds(lower_bound, upper_bound, "rosenbrock");
     metadata_.id = "rosenbrock";
     metadata_.family = "benchmark";
     metadata_.description = "Rosenbrock function (unimodal, non-separable)";
@@ -71,6 +77,8 @@ double RosenbrockProblem::evaluate(const std::vector<double> &decision_vector) c
 }
 
 RastriginProblem::RastriginProblem(std::size_t dimension, double lower_bound, double upper_bound) {
+    validate_dimension(dimension, "rastrigin");
+    validate_bounds(lower_bound, upper_bound, "rastrigin");
     metadata_.id = "rastrigin";
     metadata_.family = "benchmark";
     metadata_.description = "Rastrigin function (multimodal, separable)";
