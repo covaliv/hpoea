@@ -6,6 +6,24 @@
 #include <numbers>
 #include <stdexcept>
 
+namespace {
+
+void validate_bounds(double lower, double upper, const char *problem_name) {
+    if (lower >= upper) {
+        throw std::invalid_argument(
+            std::string(problem_name) + ": lower bound must be less than upper bound");
+    }
+}
+
+void validate_dimension(std::size_t dim, const char *problem_name) {
+    if (dim == 0) {
+        throw std::invalid_argument(
+            std::string(problem_name) + ": dimension must be at least 1");
+    }
+}
+
+} // namespace
+
 namespace hpoea::wrappers::problems {
 
 SphereProblem::SphereProblem(std::size_t dimension, double lower_bound, double upper_bound) {
