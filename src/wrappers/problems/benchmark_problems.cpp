@@ -100,6 +100,8 @@ double RastriginProblem::evaluate(const std::vector<double> &decision_vector) co
 }
 
 AckleyProblem::AckleyProblem(std::size_t dimension, double lower_bound, double upper_bound) {
+    validate_dimension(dimension, "ackley");
+    validate_bounds(lower_bound, upper_bound, "ackley");
     metadata_.id = "ackley";
     metadata_.family = "benchmark";
     metadata_.description = "Ackley function (multimodal, non-separable)";
@@ -131,6 +133,8 @@ double AckleyProblem::evaluate(const std::vector<double> &decision_vector) const
 }
 
 GriewankProblem::GriewankProblem(std::size_t dimension, double lower_bound, double upper_bound) {
+    validate_dimension(dimension, "griewank");
+    validate_bounds(lower_bound, upper_bound, "griewank");
     metadata_.id = "griewank";
     metadata_.family = "benchmark";
     metadata_.description = "Griewank function (multimodal, many local minima)";
@@ -156,6 +160,8 @@ double GriewankProblem::evaluate(const std::vector<double> &decision_vector) con
 }
 
 SchwefelProblem::SchwefelProblem(std::size_t dimension, double lower_bound, double upper_bound) {
+    validate_dimension(dimension, "schwefel");
+    validate_bounds(lower_bound, upper_bound, "schwefel");
     metadata_.id = "schwefel";
     metadata_.family = "benchmark";
     metadata_.description = "Schwefel function (multimodal, deceptive landscape)";
@@ -179,6 +185,8 @@ double SchwefelProblem::evaluate(const std::vector<double> &decision_vector) con
 }
 
 ZakharovProblem::ZakharovProblem(std::size_t dimension, double lower_bound, double upper_bound) {
+    validate_dimension(dimension, "zakharov");
+    validate_bounds(lower_bound, upper_bound, "zakharov");
     metadata_.id = "zakharov";
     metadata_.family = "benchmark";
     metadata_.description = "Zakharov function (unimodal, plate-shaped)";
@@ -204,6 +212,8 @@ double ZakharovProblem::evaluate(const std::vector<double> &decision_vector) con
 }
 
 StyblinskiTangProblem::StyblinskiTangProblem(std::size_t dimension, double lower_bound, double upper_bound) {
+    validate_dimension(dimension, "styblinski_tang");
+    validate_bounds(lower_bound, upper_bound, "styblinski_tang");
     metadata_.id = "styblinski_tang";
     metadata_.family = "benchmark";
     metadata_.description = "Styblinski-Tang function (multimodal)";
