@@ -24,14 +24,6 @@ std::string parameter_type_to_string(hpoea::core::ParameterType type) {
 
 namespace hpoea::core {
 
-void ParameterSpace::rebuild_index() const {
-    index_.clear();
-    for (std::size_t i = 0; i < descriptors_.size(); ++i) {
-        index_[descriptors_[i].name] = i;
-    }
-    index_valid_ = true;
-}
-
 void ParameterSpace::add_descriptor(ParameterDescriptor descriptor) {
     if (descriptor.name.empty()) {
         throw ParameterValidationError("Parameter descriptor name must not be empty");
@@ -41,43 +33,40 @@ void ParameterSpace::add_descriptor(ParameterDescriptor descriptor) {
     }
 
     if (descriptor.type == ParameterType::Continuous && descriptor.continuous_range.has_value()) {
-        if (descriptor.continuous_range->lower > descriptor.continuous_range->upper) {
-            throw ParameterValidationError("Continuous parameter lower bound exceeds upper bound for " + descriptor.name);
+        const auto &range = *descriptor.continuous_range;
+        if (range.lower > range.upper) {
+            throw ParameterValidationError(
+                "Continuous parameter '" + descriptor.name + "' has lower bound > upper bound");
         }
     }
 
     if (descriptor.type == ParameterType::Integer && descriptor.integer_range.has_value()) {
-        if (descriptor.integer_range->lower > descriptor.integer_range->upper) {
-            throw ParameterValidationError("Integer parameter lower bound exceeds upper bound for " + descriptor.name);
+        const auto &range = *descriptor.integer_range;
+        if (range.lower > range.upper) {
+            throw ParameterValidationError(
+                "Integer parameter '" + descriptor.name + "' has lower bound > upper bound");
         }
     }
 
-    if (descriptor.type == ParameterType::Categorical) {
-        if (descriptor.categorical_choices.empty()) {
-            throw ParameterValidationError("Categorical parameter requires at least one choice for " + descriptor.name);
-        }
+    if (descriptor.type == ParameterType::Categorical && descriptor.categorical_choices.empty()) {
+        throw ParameterValidationError(
+            "Categorical parameter '" + descriptor.name + "' requires at least one choice");
     }
 
+    index_[descriptor.name] = descriptors_.size();
     descriptors_.push_back(std::move(descriptor));
-    index_valid_ = false;
 }
 
 bool ParameterSpace::contains(const std::string &name) const noexcept {
-    if (!index_valid_) {
-        rebuild_index();
-    }
     return index_.find(name) != index_.end();
 }
 
 const ParameterDescriptor &ParameterSpace::descriptor(const std::string &name) const {
-    if (!index_valid_) {
-        rebuild_index();
-    }
-    const auto iter = index_.find(name);
-    if (iter == index_.end()) {
+    auto it = index_.find(name);
+    if (it == index_.end()) {
         throw ParameterValidationError("Unknown parameter: " + name);
     }
-    return descriptors_[iter->second];
+    return descriptors_[it->second];
 }
 
 void ParameterSpace::validate(const ParameterSet &values) const {

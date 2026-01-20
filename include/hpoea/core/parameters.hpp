@@ -67,11 +67,9 @@ public:
 
 private:
     void validate_value(const ParameterDescriptor &descriptor, const ParameterValue &value) const;
-    void rebuild_index() const;
 
-    mutable std::vector<ParameterDescriptor> descriptors_{};
-    mutable std::unordered_map<std::string, std::size_t> index_{};
-    mutable bool index_valid_{false};
+    std::vector<ParameterDescriptor> descriptors_;
+    std::unordered_map<std::string, std::size_t> index_;
 };
 
 } // namespace hpoea::core
