@@ -57,6 +57,10 @@ public:
 
     [[nodiscard]] const std::vector<ParameterDescriptor> &descriptors() const noexcept { return descriptors_; }
 
+    [[nodiscard]] bool empty() const noexcept { return descriptors_.empty(); }
+
+    [[nodiscard]] std::size_t size() const noexcept { return descriptors_.size(); }
+
     void validate(const ParameterSet &values) const;
 
     [[nodiscard]] ParameterSet apply_defaults(const ParameterSet &overrides) const;
