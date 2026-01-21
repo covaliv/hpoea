@@ -26,17 +26,17 @@ namespace hpoea::core {
 
 void ParameterSpace::add_descriptor(ParameterDescriptor descriptor) {
     if (descriptor.name.empty()) {
-        throw ParameterValidationError("Parameter descriptor name must not be empty");
+        throw ParameterValidationError("parameter descriptor name must not be empty");
     }
     if (contains(descriptor.name)) {
-        throw ParameterValidationError("Parameter descriptor already exists: " + descriptor.name);
+        throw ParameterValidationError("parameter descriptor already exists: " + descriptor.name);
     }
 
     if (descriptor.type == ParameterType::Continuous && descriptor.continuous_range.has_value()) {
         const auto &range = *descriptor.continuous_range;
         if (range.lower > range.upper) {
             throw ParameterValidationError(
-                "Continuous parameter '" + descriptor.name + "' has lower bound > upper bound");
+                "continuous parameter '" + descriptor.name + "' has lower bound > upper bound");
         }
     }
 
@@ -44,13 +44,13 @@ void ParameterSpace::add_descriptor(ParameterDescriptor descriptor) {
         const auto &range = *descriptor.integer_range;
         if (range.lower > range.upper) {
             throw ParameterValidationError(
-                "Integer parameter '" + descriptor.name + "' has lower bound > upper bound");
+                "integer parameter '" + descriptor.name + "' has lower bound > upper bound");
         }
     }
 
     if (descriptor.type == ParameterType::Categorical && descriptor.categorical_choices.empty()) {
         throw ParameterValidationError(
-            "Categorical parameter '" + descriptor.name + "' requires at least one choice");
+            "categorical parameter '" + descriptor.name + "' requires at least one choice");
     }
 
     index_[descriptor.name] = descriptors_.size();
@@ -64,7 +64,7 @@ bool ParameterSpace::contains(const std::string &name) const noexcept {
 const ParameterDescriptor &ParameterSpace::descriptor(const std::string &name) const {
     auto it = index_.find(name);
     if (it == index_.end()) {
-        throw ParameterValidationError("Unknown parameter: " + name);
+        throw ParameterValidationError("unknown parameter: " + name);
     }
     return descriptors_[it->second];
 }
@@ -77,7 +77,7 @@ void ParameterSpace::validate(const ParameterSet &values) const {
 
     for (const auto &desc : descriptors_) {
         if (desc.required && !values.contains(desc.name)) {
-            throw ParameterValidationError("Missing required parameter: " + desc.name);
+            throw ParameterValidationError("missing required parameter: " + desc.name);
         }
     }
 }
@@ -100,7 +100,7 @@ ParameterSet ParameterSpace::apply_defaults(const ParameterSet &overrides) const
             validate_value(desc, *desc.default_value);
             result.emplace(desc.name, *desc.default_value);
         } else if (desc.required) {
-            throw ParameterValidationError("Missing required parameter: " + desc.name);
+            throw ParameterValidationError("missing required parameter: " + desc.name);
         }
     }
 
@@ -109,7 +109,7 @@ ParameterSet ParameterSpace::apply_defaults(const ParameterSet &overrides) const
 
 void ParameterSpace::validate_value(const ParameterDescriptor &descriptor, const ParameterValue &value) const {
     std::stringstream message;
-    message << "Parameter '" << descriptor.name << "' expects type " << parameter_type_to_string(descriptor.type);
+    message << "parameter '" << descriptor.name << "' expects type " << parameter_type_to_string(descriptor.type);
 
     switch (descriptor.type) {
     case ParameterType::Continuous: {
