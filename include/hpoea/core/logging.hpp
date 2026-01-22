@@ -34,21 +34,31 @@ public:
     virtual void log(const RunRecord &record) = 0;
 
     virtual void flush() = 0;
+
+    [[nodiscard]] virtual std::size_t records_written() const noexcept = 0;
+
+    [[nodiscard]] virtual bool good() const noexcept = 0;
 };
 
 class JsonlLogger final : public ILogger {
 public:
-    explicit JsonlLogger(std::filesystem::path file_path);
+    explicit JsonlLogger(std::filesystem::path file_path, bool auto_flush = true);
 
     void log(const RunRecord &record) override;
 
     void flush() override;
+
+    [[nodiscard]] std::size_t records_written() const noexcept override { return records_written_; }
+
+    [[nodiscard]] bool good() const noexcept override { return stream_.good(); }
 
     [[nodiscard]] const std::filesystem::path &path() const noexcept { return file_path_; }
 
 private:
     std::filesystem::path file_path_;
     std::ofstream stream_;
+    std::size_t records_written_{0};
+    bool auto_flush_{true};
 };
 
 [[nodiscard]] std::string serialize_run_record(const RunRecord &record);

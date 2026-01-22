@@ -130,13 +130,12 @@ std::string serialize_parameter_set(const hpoea::core::ParameterSet &parameters)
 
 namespace hpoea::core {
 
-JsonlLogger::JsonlLogger(std::filesystem::path file_path)
-    : file_path_(std::move(file_path)) {
+JsonlLogger::JsonlLogger(std::filesystem::path file_path, bool auto_flush)
+    : file_path_(std::move(file_path)), auto_flush_(auto_flush) {
     stream_.open(file_path_, std::ios::out | std::ios::app);
     if (!stream_.is_open()) {
-        throw std::runtime_error("Failed to open log file: " + file_path_.string());
+        throw std::runtime_error("failed to open log file: " + file_path_.string());
     }
-    stream_.exceptions(std::ofstream::failbit | std::ofstream::badbit);
 }
 
 void JsonlLogger::log(const RunRecord &record) {
@@ -144,12 +143,20 @@ void JsonlLogger::log(const RunRecord &record) {
         stream_.clear();
         stream_.open(file_path_, std::ios::out | std::ios::app);
         if (!stream_.is_open()) {
-            throw std::runtime_error("Failed to reopen log file: " + file_path_.string());
+            throw std::runtime_error("failed to reopen log file: " + file_path_.string());
         }
-        stream_.exceptions(std::ofstream::failbit | std::ofstream::badbit);
     }
 
     stream_ << serialize_run_record(record) << '\n';
+    if (!stream_.good()) {
+        throw std::runtime_error("failed to write log record to: " + file_path_.string());
+    }
+
+    ++records_written_;
+
+    if (auto_flush_) {
+        stream_.flush();
+    }
 }
 
 void JsonlLogger::flush() {
