@@ -1,112 +1,80 @@
 #include "hpoea/wrappers/pagmo/pso_algorithm.hpp"
 
-#include "hpoea/core/problem.hpp"
+#include "budget_util.hpp"
+#include "problem_adapter.hpp"
 
-#include <algorithm>
 #include <chrono>
-#include <limits>
 #include <pagmo/algorithm.hpp>
 #include <pagmo/algorithms/pso.hpp>
 #include <pagmo/population.hpp>
 #include <pagmo/problem.hpp>
-#include <pagmo/types.hpp>
-
-#include "problem_adapter.hpp"
 
 namespace {
 
 using hpoea::core::AlgorithmIdentity;
-using hpoea::core::Budget;
-using hpoea::core::BudgetUsage;
 using hpoea::core::OptimizationResult;
 using hpoea::core::ParameterDescriptor;
-using hpoea::core::ParameterSet;
 using hpoea::core::ParameterSpace;
 using hpoea::core::ParameterType;
-
-constexpr std::string_view kFamily = "ParticleSwarmOptimization";
-constexpr std::string_view kImplementation = "pagmo::pso";
-constexpr std::string_view kVersion = "2.x";
 
 ParameterSpace make_parameter_space() {
     ParameterSpace space;
 
-    ParameterDescriptor population_size;
-    population_size.name = "population_size";
-    population_size.type = ParameterType::Integer;
-    population_size.integer_range = hpoea::core::IntegerRange{5, 2000};
-    population_size.default_value = static_cast<std::int64_t>(50);
-    population_size.required = true;
-    space.add_descriptor(population_size);
+    ParameterDescriptor d;
+    d.name = "population_size";
+    d.type = ParameterType::Integer;
+    d.integer_range = hpoea::core::IntegerRange{5, 2000};
+    d.default_value = std::int64_t{50};
+    d.required = true;
+    space.add_descriptor(d);
 
-    ParameterDescriptor omega;
-    omega.name = "omega";
-    omega.type = ParameterType::Continuous;
-    omega.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
-    omega.default_value = 0.7298;
-    space.add_descriptor(omega);
+    d = {};
+    d.name = "omega";
+    d.type = ParameterType::Continuous;
+    d.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
+    d.default_value = 0.7298;
+    space.add_descriptor(d);
 
-    ParameterDescriptor eta1;
-    eta1.name = "eta1";
-    eta1.type = ParameterType::Continuous;
-    eta1.continuous_range = hpoea::core::ContinuousRange{1.0, 3.0};
-    eta1.default_value = 2.05;
-    space.add_descriptor(eta1);
+    d = {};
+    d.name = "eta1";
+    d.type = ParameterType::Continuous;
+    d.continuous_range = hpoea::core::ContinuousRange{1.0, 3.0};
+    d.default_value = 2.05;
+    space.add_descriptor(d);
 
-    ParameterDescriptor eta2;
-    eta2.name = "eta2";
-    eta2.type = ParameterType::Continuous;
-    eta2.continuous_range = hpoea::core::ContinuousRange{1.0, 3.0};
-    eta2.default_value = 2.05;
-    space.add_descriptor(eta2);
+    d = {};
+    d.name = "eta2";
+    d.type = ParameterType::Continuous;
+    d.continuous_range = hpoea::core::ContinuousRange{1.0, 3.0};
+    d.default_value = 2.05;
+    space.add_descriptor(d);
 
-    ParameterDescriptor max_velocity;
-    max_velocity.name = "max_velocity";
-    max_velocity.type = ParameterType::Continuous;
-    max_velocity.continuous_range = hpoea::core::ContinuousRange{0.0, 100.0};
-    max_velocity.default_value = 0.5;
-    space.add_descriptor(max_velocity);
+    d = {};
+    d.name = "max_velocity";
+    d.type = ParameterType::Continuous;
+    d.continuous_range = hpoea::core::ContinuousRange{0.0, 100.0};
+    d.default_value = 0.5;
+    space.add_descriptor(d);
 
-    ParameterDescriptor variant;
-    variant.name = "variant";
-    variant.type = ParameterType::Integer;
-    variant.integer_range = hpoea::core::IntegerRange{1, 6};
-    variant.default_value = static_cast<std::int64_t>(5);
-    space.add_descriptor(variant);
+    d = {};
+    d.name = "variant";
+    d.type = ParameterType::Integer;
+    d.integer_range = hpoea::core::IntegerRange{1, 6};
+    d.default_value = std::int64_t{5};
+    space.add_descriptor(d);
 
-    ParameterDescriptor generations;
-    generations.name = "generations";
-    generations.type = ParameterType::Integer;
-    generations.integer_range = hpoea::core::IntegerRange{1, 1000};
-    generations.default_value = static_cast<std::int64_t>(100);
-    space.add_descriptor(generations);
+    d = {};
+    d.name = "generations";
+    d.type = ParameterType::Integer;
+    d.integer_range = hpoea::core::IntegerRange{1, 1000};
+    d.default_value = std::int64_t{100};
+    space.add_descriptor(d);
 
     return space;
 }
 
 AlgorithmIdentity make_identity() {
-    AlgorithmIdentity id;
-    id.family = std::string{kFamily};
-    id.implementation = std::string{kImplementation};
-    id.version = std::string{kVersion};
-    return id;
-}
-
-std::size_t determine_generations(const ParameterSet &parameters, const Budget &budget, std::size_t population) {
-    std::size_t generations = static_cast<std::size_t>(std::get<std::int64_t>(parameters.at("generations")));
-
-    if (budget.generations.has_value()) {
-        generations = std::min(generations, budget.generations.value());
-    }
-
-    if (budget.function_evaluations.has_value()) {
-        const std::size_t max_generations = budget.function_evaluations.value() / std::max<std::size_t>(population, 1);
-        if (max_generations > 0) {
-            generations = std::min(generations, max_generations);
-        }
-    }
-
-    return std::max<std::size_t>(generations, 1);
+    return {"ParticleSwarmOptimization", "pagmo::pso", "2.x"};
 }
 
 } // namespace
@@ -122,7 +90,7 @@ PagmoParticleSwarmOptimization::PagmoParticleSwarmOptimization(const PagmoPartic
 
 PagmoParticleSwarmOptimization &PagmoParticleSwarmOptimization::operator=(const PagmoParticleSwarmOptimization &other) = default;
 
-void PagmoParticleSwarmOptimization::configure(const ParameterSet &parameters) {
+void PagmoParticleSwarmOptimization::configure(const core::ParameterSet &parameters) {
     configured_parameters_ = parameter_space_.apply_defaults(parameters);
 }
 
@@ -134,23 +102,20 @@ OptimizationResult PagmoParticleSwarmOptimization::run(const core::IProblem &pro
     result.seed = seed;
 
     try {
-        const auto population_size = static_cast<std::size_t>(std::get<std::int64_t>(configured_parameters_.at("population_size")));
-        const auto omega = std::get<double>(configured_parameters_.at("omega"));
-        const auto eta1 = std::get<double>(configured_parameters_.at("eta1"));
-        const auto eta2 = std::get<double>(configured_parameters_.at("eta2"));
-        const auto max_velocity = std::get<double>(configured_parameters_.at("max_velocity"));
-        const auto variant = static_cast<unsigned>(std::get<std::int64_t>(configured_parameters_.at("variant")));
+        const auto population_size = get_int_param(configured_parameters_, "population_size");
+        const auto omega = get_double_param(configured_parameters_, "omega");
+        const auto eta1 = get_double_param(configured_parameters_, "eta1");
+        const auto eta2 = get_double_param(configured_parameters_, "eta2");
+        const auto max_velocity = get_double_param(configured_parameters_, "max_velocity");
+        const auto variant = static_cast<unsigned>(get_int_param(configured_parameters_, "variant"));
 
         auto effective_parameters = configured_parameters_;
-
-        const auto generations = determine_generations(configured_parameters_, budget, population_size);
+        const auto generations = compute_generations(configured_parameters_, budget, population_size);
         effective_parameters.insert_or_assign("generations", static_cast<std::int64_t>(generations));
 
-        // pso constructor parameters: gen, omega, eta1, eta2, max_vel, variant, neighb_type, neighb_param, memory, seed
-        const auto seed32 = static_cast<unsigned>(seed & std::numeric_limits<unsigned>::max());
+        const auto seed32 = to_seed32(seed);
         pagmo::algorithm algorithm{pagmo::pso(static_cast<unsigned>(generations), omega, eta1, eta2, max_velocity, variant, 2u, 4u, false, seed32)};
         pagmo::problem pg_problem{ProblemAdapter{problem}};
-
         pagmo::population population{pg_problem, population_size, seed32};
 
         const auto start_time = std::chrono::steady_clock::now();
