@@ -1,6 +1,7 @@
 #include "hpoea/wrappers/pagmo/cmaes_hyper.hpp"
 
 #include "hyper_tuning_udp.hpp"
+#include "hyper_util.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -13,100 +14,86 @@
 namespace {
 
 using hpoea::core::AlgorithmIdentity;
-using hpoea::core::Budget;
-using hpoea::core::HyperparameterOptimizationResult;
-using hpoea::core::HyperparameterTrialRecord;
 using hpoea::core::ParameterDescriptor;
-using hpoea::core::ParameterSet;
 using hpoea::core::ParameterSpace;
 using hpoea::core::ParameterType;
-using hpoea::core::RunStatus;
-using hpoea::pagmo_wrappers::HyperTuningUdp;
-
-constexpr std::string_view kFamily = "CMAES";
-constexpr std::string_view kImplementation = "pagmo::cmaes";
-constexpr std::string_view kVersion = "2.x";
 
 ParameterSpace make_parameter_space() {
-  ParameterSpace space;
+    ParameterSpace space;
 
-  ParameterDescriptor generations;
-  generations.name = "generations";
-  generations.type = ParameterType::Integer;
-  generations.integer_range = hpoea::core::IntegerRange{1, 1000};
-  generations.default_value = static_cast<std::int64_t>(100);
-  space.add_descriptor(generations);
+    ParameterDescriptor d;
+    d.name = "generations";
+    d.type = ParameterType::Integer;
+    d.integer_range = hpoea::core::IntegerRange{1, 1000};
+    d.default_value = std::int64_t{100};
+    space.add_descriptor(d);
 
-  ParameterDescriptor sigma0;
-  sigma0.name = "sigma0";
-  sigma0.type = ParameterType::Continuous;
-  sigma0.continuous_range = hpoea::core::ContinuousRange{1e-6, 10.0};
-  sigma0.default_value = 0.5;
-  space.add_descriptor(sigma0);
+    d = {};
+    d.name = "sigma0";
+    d.type = ParameterType::Continuous;
+    d.continuous_range = hpoea::core::ContinuousRange{1e-6, 10.0};
+    d.default_value = 0.5;
+    space.add_descriptor(d);
 
-  ParameterDescriptor cc;
-  cc.name = "cc";
-  cc.type = ParameterType::Continuous;
-  cc.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
-  cc.default_value = 0.4;
-  space.add_descriptor(cc);
+    d = {};
+    d.name = "cc";
+    d.type = ParameterType::Continuous;
+    d.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
+    d.default_value = 0.4;
+    space.add_descriptor(d);
 
-  ParameterDescriptor cs;
-  cs.name = "cs";
-  cs.type = ParameterType::Continuous;
-  cs.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
-  cs.default_value = 0.3;
-  space.add_descriptor(cs);
+    d = {};
+    d.name = "cs";
+    d.type = ParameterType::Continuous;
+    d.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
+    d.default_value = 0.3;
+    space.add_descriptor(d);
 
-  ParameterDescriptor c1;
-  c1.name = "c1";
-  c1.type = ParameterType::Continuous;
-  c1.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
-  c1.default_value = 0.05;
-  space.add_descriptor(c1);
+    d = {};
+    d.name = "c1";
+    d.type = ParameterType::Continuous;
+    d.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
+    d.default_value = 0.05;
+    space.add_descriptor(d);
 
-  ParameterDescriptor cmu;
-  cmu.name = "cmu";
-  cmu.type = ParameterType::Continuous;
-  cmu.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
-  cmu.default_value = 0.1;
-  space.add_descriptor(cmu);
+    d = {};
+    d.name = "cmu";
+    d.type = ParameterType::Continuous;
+    d.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
+    d.default_value = 0.1;
+    space.add_descriptor(d);
 
-  ParameterDescriptor ftol;
-  ftol.name = "ftol";
-  ftol.type = ParameterType::Continuous;
-  ftol.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
-  ftol.default_value = 1e-6;
-  space.add_descriptor(ftol);
+    d = {};
+    d.name = "ftol";
+    d.type = ParameterType::Continuous;
+    d.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
+    d.default_value = 1e-6;
+    space.add_descriptor(d);
 
-  ParameterDescriptor xtol;
-  xtol.name = "xtol";
-  xtol.type = ParameterType::Continuous;
-  xtol.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
-  xtol.default_value = 1e-6;
-  space.add_descriptor(xtol);
+    d = {};
+    d.name = "xtol";
+    d.type = ParameterType::Continuous;
+    d.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
+    d.default_value = 1e-6;
+    space.add_descriptor(d);
 
-  ParameterDescriptor memory;
-  memory.name = "memory";
-  memory.type = ParameterType::Boolean;
-  memory.default_value = false;
-  space.add_descriptor(memory);
+    d = {};
+    d.name = "memory";
+    d.type = ParameterType::Boolean;
+    d.default_value = false;
+    space.add_descriptor(d);
 
-  ParameterDescriptor force_bounds;
-  force_bounds.name = "force_bounds";
-  force_bounds.type = ParameterType::Boolean;
-  force_bounds.default_value = false;
-  space.add_descriptor(force_bounds);
+    d = {};
+    d.name = "force_bounds";
+    d.type = ParameterType::Boolean;
+    d.default_value = false;
+    space.add_descriptor(d);
 
-  return space;
+    return space;
 }
 
 AlgorithmIdentity make_identity() {
-  AlgorithmIdentity id;
-  id.family = std::string{kFamily};
-  id.implementation = std::string{kImplementation};
-  id.version = std::string{kVersion};
-  return id;
+    return {"CMAES", "pagmo::cmaes", "2.x"};
 }
 
 } // namespace
@@ -118,8 +105,8 @@ PagmoCmaesHyperOptimizer::PagmoCmaesHyperOptimizer()
       configured_parameters_(parameter_space_.apply_defaults({})),
       identity_(make_identity()) {}
 
-void PagmoCmaesHyperOptimizer::configure(const ParameterSet &parameters) {
-  configured_parameters_ = parameter_space_.apply_defaults(parameters);
+void PagmoCmaesHyperOptimizer::configure(const core::ParameterSet &parameters) {
+    configured_parameters_ = parameter_space_.apply_defaults(parameters);
 }
 
 void PagmoCmaesHyperOptimizer::set_search_space(
@@ -129,82 +116,54 @@ void PagmoCmaesHyperOptimizer::set_search_space(
 
 core::HyperparameterOptimizationResult PagmoCmaesHyperOptimizer::optimize(
     const core::IEvolutionaryAlgorithmFactory &algorithm_factory,
-    const core::IProblem &problem, const Budget &budget, unsigned long seed) {
+    const core::IProblem &problem, const core::Budget &budget, unsigned long seed) {
 
-  HyperparameterOptimizationResult result;
-  result.status = RunStatus::InternalError;
-  result.seed = seed;
+    core::HyperparameterOptimizationResult result;
+    result.status = core::RunStatus::InternalError;
+    result.seed = seed;
 
-  try {
-    auto context = std::make_shared<HyperTuningUdp::Context>();
-    context->factory = &algorithm_factory;
-    context->problem = &problem;
-    context->algorithm_budget = budget;
-    context->base_seed = seed;
-    context->trials =
-        std::make_shared<std::vector<HyperparameterTrialRecord>>();
-    context->search_space = search_space_;
+    try {
+        auto ctx = make_hyper_context(algorithm_factory, problem, budget, seed, search_space_);
+        HyperTuningUdp udp{ctx};
 
-    HyperTuningUdp udp{context};
+        const auto [lower, upper] = udp.get_bounds();
+        pagmo::problem tuning_problem{udp};
 
-    const auto [lower, upper] = udp.get_bounds();
-    pagmo::problem tuning_problem{udp};
+        auto generations = static_cast<unsigned>(
+            std::get<std::int64_t>(configured_parameters_.at("generations")));
+        if (budget.generations)
+            generations = std::min<unsigned>(generations, *budget.generations);
 
-    auto generations = static_cast<unsigned>(
-        std::get<std::int64_t>(configured_parameters_.at("generations")));
-    if (budget.generations.has_value()) {
-      generations = std::min<unsigned>(generations, budget.generations.value());
+        const auto seed32 = static_cast<unsigned>(seed & std::numeric_limits<unsigned>::max());
+
+        pagmo::algorithm algorithm{pagmo::cmaes{
+            generations,
+            std::get<double>(configured_parameters_.at("cc")),
+            std::get<double>(configured_parameters_.at("cs")),
+            std::get<double>(configured_parameters_.at("c1")),
+            std::get<double>(configured_parameters_.at("cmu")),
+            std::get<double>(configured_parameters_.at("sigma0")),
+            std::get<double>(configured_parameters_.at("ftol")),
+            std::get<double>(configured_parameters_.at("xtol")),
+            std::get<bool>(configured_parameters_.at("memory")),
+            std::get<bool>(configured_parameters_.at("force_bounds")),
+            seed32}};
+
+        const auto dim = lower.size();
+        const auto pop_size = static_cast<pagmo::population::size_type>(std::max(dim * 4, dim + 1));
+        pagmo::population population{tuning_problem, pop_size, seed32};
+
+        const auto t0 = std::chrono::steady_clock::now();
+        population = algorithm.evolve(population);
+        const auto t1 = std::chrono::steady_clock::now();
+
+        fill_hyper_result(result, *ctx, population, generations, t0, t1, configured_parameters_);
+    } catch (const std::exception &ex) {
+        result.status = core::RunStatus::InternalError;
+        result.message = ex.what();
     }
 
-    const auto seed32 =
-        static_cast<unsigned>(seed & std::numeric_limits<unsigned>::max());
-
-    pagmo::algorithm algorithm{pagmo::cmaes{
-        generations, std::get<double>(configured_parameters_.at("cc")),
-        std::get<double>(configured_parameters_.at("cs")),
-        std::get<double>(configured_parameters_.at("c1")),
-        std::get<double>(configured_parameters_.at("cmu")),
-        std::get<double>(configured_parameters_.at("sigma0")),
-        std::get<double>(configured_parameters_.at("ftol")),
-        std::get<double>(configured_parameters_.at("xtol")),
-        std::get<bool>(configured_parameters_.at("memory")),
-        std::get<bool>(configured_parameters_.at("force_bounds")), seed32}};
-
-    const auto dimension = lower.size();
-    const auto population_size = static_cast<pagmo::population::size_type>(
-        std::max<std::size_t>(dimension * 4, dimension + 1));
-
-    pagmo::population population{tuning_problem, population_size, seed32};
-
-    const auto start_time = std::chrono::steady_clock::now();
-    population = algorithm.evolve(population);
-    const auto end_time = std::chrono::steady_clock::now();
-
-    result.status = RunStatus::Success;
-    result.trials = context->trials ? std::move(*context->trials)
-                                    : std::vector<HyperparameterTrialRecord>{};
-
-    const auto best_trial = context->get_best_trial();
-    if (best_trial.has_value()) {
-      result.best_parameters = best_trial->parameters;
-      result.best_objective = best_trial->optimization_result.best_fitness;
-    } else {
-      result.best_objective = population.champion_f()[0];
-    }
-
-    result.budget_usage.wall_time =
-        std::chrono::duration_cast<std::chrono::milliseconds>(end_time -
-                                                              start_time);
-    result.budget_usage.generations = generations;
-    result.budget_usage.function_evaluations = context->get_evaluations();
-    result.effective_optimizer_parameters = configured_parameters_;
-    result.message = "Hyperparameter optimization completed.";
-  } catch (const std::exception &ex) {
-    result.status = RunStatus::InternalError;
-    result.message = ex.what();
-  }
-
-  return result;
+    return result;
 }
 
 } // namespace hpoea::pagmo_wrappers
