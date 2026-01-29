@@ -1,6 +1,7 @@
 #include "hpoea/wrappers/pagmo/sa_hyper.hpp"
 
 #include "hyper_tuning_udp.hpp"
+#include "hyper_util.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -13,81 +14,67 @@
 namespace {
 
 using hpoea::core::AlgorithmIdentity;
-using hpoea::core::Budget;
-using hpoea::core::HyperparameterOptimizationResult;
-using hpoea::core::HyperparameterTrialRecord;
 using hpoea::core::ParameterDescriptor;
-using hpoea::core::ParameterSet;
 using hpoea::core::ParameterSpace;
 using hpoea::core::ParameterType;
-using hpoea::core::RunStatus;
-using hpoea::pagmo_wrappers::HyperTuningUdp;
-
-constexpr std::string_view kFamily = "SimulatedAnnealing";
-constexpr std::string_view kImplementation = "pagmo::simulated_annealing";
-constexpr std::string_view kVersion = "2.x";
 
 ParameterSpace make_parameter_space() {
-  ParameterSpace space;
+    ParameterSpace space;
 
-  ParameterDescriptor iterations;
-  iterations.name = "iterations";
-  iterations.type = ParameterType::Integer;
-  iterations.integer_range = hpoea::core::IntegerRange{1, 100000};
-  iterations.default_value = static_cast<std::int64_t>(1000);
-  space.add_descriptor(iterations);
+    ParameterDescriptor d;
+    d.name = "iterations";
+    d.type = ParameterType::Integer;
+    d.integer_range = hpoea::core::IntegerRange{1, 100000};
+    d.default_value = std::int64_t{1000};
+    space.add_descriptor(d);
 
-  ParameterDescriptor ts;
-  ts.name = "ts";
-  ts.type = ParameterType::Continuous;
-  ts.continuous_range = hpoea::core::ContinuousRange{1e-6, 100.0};
-  ts.default_value = 10.0;
-  space.add_descriptor(ts);
+    d = {};
+    d.name = "ts";
+    d.type = ParameterType::Continuous;
+    d.continuous_range = hpoea::core::ContinuousRange{1e-6, 100.0};
+    d.default_value = 10.0;
+    space.add_descriptor(d);
 
-  ParameterDescriptor tf;
-  tf.name = "tf";
-  tf.type = ParameterType::Continuous;
-  tf.continuous_range = hpoea::core::ContinuousRange{1e-6, 100.0};
-  tf.default_value = 0.1;
-  space.add_descriptor(tf);
+    d = {};
+    d.name = "tf";
+    d.type = ParameterType::Continuous;
+    d.continuous_range = hpoea::core::ContinuousRange{1e-6, 100.0};
+    d.default_value = 0.1;
+    space.add_descriptor(d);
 
-  ParameterDescriptor n_T_adj;
-  n_T_adj.name = "n_T_adj";
-  n_T_adj.type = ParameterType::Integer;
-  n_T_adj.integer_range = hpoea::core::IntegerRange{1, 10000};
-  n_T_adj.default_value = static_cast<std::int64_t>(10);
-  space.add_descriptor(n_T_adj);
+    d = {};
+    d.name = "n_T_adj";
+    d.type = ParameterType::Integer;
+    d.integer_range = hpoea::core::IntegerRange{1, 10000};
+    d.default_value = std::int64_t{10};
+    space.add_descriptor(d);
 
-  ParameterDescriptor n_range_adj;
-  n_range_adj.name = "n_range_adj";
-  n_range_adj.type = ParameterType::Integer;
-  n_range_adj.integer_range = hpoea::core::IntegerRange{1, 10000};
-  n_range_adj.default_value = static_cast<std::int64_t>(1);
-  space.add_descriptor(n_range_adj);
+    d = {};
+    d.name = "n_range_adj";
+    d.type = ParameterType::Integer;
+    d.integer_range = hpoea::core::IntegerRange{1, 10000};
+    d.default_value = std::int64_t{1};
+    space.add_descriptor(d);
 
-  ParameterDescriptor bin_size;
-  bin_size.name = "bin_size";
-  bin_size.type = ParameterType::Integer;
-  bin_size.integer_range = hpoea::core::IntegerRange{1, 1000};
-  bin_size.default_value = static_cast<std::int64_t>(10);
-  space.add_descriptor(bin_size);
+    d = {};
+    d.name = "bin_size";
+    d.type = ParameterType::Integer;
+    d.integer_range = hpoea::core::IntegerRange{1, 1000};
+    d.default_value = std::int64_t{10};
+    space.add_descriptor(d);
 
-  ParameterDescriptor start_range;
-  start_range.name = "start_range";
-  start_range.type = ParameterType::Continuous;
-  start_range.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
-  start_range.default_value = 1.0;
-  space.add_descriptor(start_range);
+    d = {};
+    d.name = "start_range";
+    d.type = ParameterType::Continuous;
+    d.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
+    d.default_value = 1.0;
+    space.add_descriptor(d);
 
-  return space;
+    return space;
 }
 
 AlgorithmIdentity make_identity() {
-  AlgorithmIdentity id;
-  id.family = std::string{kFamily};
-  id.implementation = std::string{kImplementation};
-  id.version = std::string{kVersion};
-  return id;
+    return {"SimulatedAnnealing", "pagmo::simulated_annealing", "2.x"};
 }
 
 } // namespace
@@ -99,9 +86,8 @@ PagmoSimulatedAnnealingHyperOptimizer::PagmoSimulatedAnnealingHyperOptimizer()
       configured_parameters_(parameter_space_.apply_defaults({})),
       identity_(make_identity()) {}
 
-void PagmoSimulatedAnnealingHyperOptimizer::configure(
-    const ParameterSet &parameters) {
-  configured_parameters_ = parameter_space_.apply_defaults(parameters);
+void PagmoSimulatedAnnealingHyperOptimizer::configure(const core::ParameterSet &parameters) {
+    configured_parameters_ = parameter_space_.apply_defaults(parameters);
 }
 
 void PagmoSimulatedAnnealingHyperOptimizer::set_search_space(
@@ -112,96 +98,61 @@ void PagmoSimulatedAnnealingHyperOptimizer::set_search_space(
 core::HyperparameterOptimizationResult
 PagmoSimulatedAnnealingHyperOptimizer::optimize(
     const core::IEvolutionaryAlgorithmFactory &algorithm_factory,
-    const core::IProblem &problem, const Budget &budget, unsigned long seed) {
+    const core::IProblem &problem, const core::Budget &budget, unsigned long seed) {
 
-  HyperparameterOptimizationResult result;
-  result.status = RunStatus::InternalError;
-  result.seed = seed;
+    core::HyperparameterOptimizationResult result;
+    result.status = core::RunStatus::InternalError;
+    result.seed = seed;
 
-  try {
-    auto context = std::make_shared<HyperTuningUdp::Context>();
-    context->factory = &algorithm_factory;
-    context->problem = &problem;
-    context->algorithm_budget = budget;
-    context->base_seed = seed;
-    context->trials =
-        std::make_shared<std::vector<HyperparameterTrialRecord>>();
-    context->search_space = search_space_;
+    try {
+        auto ctx = make_hyper_context(algorithm_factory, problem, budget, seed, search_space_);
+        HyperTuningUdp udp{ctx};
 
-    HyperTuningUdp udp{context};
+        const auto [lower, upper] = udp.get_bounds();
+        pagmo::problem tuning_problem{udp};
 
-    const auto [lower, upper] = udp.get_bounds();
-    pagmo::problem tuning_problem{udp};
+        const auto ts = std::get<double>(configured_parameters_.at("ts"));
+        const auto tf = std::get<double>(configured_parameters_.at("tf"));
+        const auto n_T_adj = static_cast<unsigned>(
+            std::get<std::int64_t>(configured_parameters_.at("n_T_adj")));
+        const auto n_range_adj = static_cast<unsigned>(
+            std::get<std::int64_t>(configured_parameters_.at("n_range_adj")));
+        const auto bin_size = static_cast<unsigned>(
+            std::get<std::int64_t>(configured_parameters_.at("bin_size")));
+        const auto start_range = std::get<double>(configured_parameters_.at("start_range"));
 
-    const auto ts = std::get<double>(configured_parameters_.at("ts"));
-    const auto tf = std::get<double>(configured_parameters_.at("tf"));
-    const auto n_T_adj = static_cast<unsigned>(
-        std::get<std::int64_t>(configured_parameters_.at("n_T_adj")));
-    const auto n_range_adj = static_cast<unsigned>(
-        std::get<std::int64_t>(configured_parameters_.at("n_range_adj")));
-    const auto bin_size = static_cast<unsigned>(
-        std::get<std::int64_t>(configured_parameters_.at("bin_size")));
-    const auto start_range =
-        std::get<double>(configured_parameters_.at("start_range"));
+        const auto seed32 = static_cast<unsigned>(seed & std::numeric_limits<unsigned>::max());
 
-    const auto seed32 =
-        static_cast<unsigned>(seed & std::numeric_limits<unsigned>::max());
+        pagmo::simulated_annealing sa_alg(ts, tf, n_T_adj, n_range_adj, bin_size, start_range, seed32);
+        pagmo::algorithm algorithm{sa_alg};
+        pagmo::population population{tuning_problem, 1, seed32};
 
-    pagmo::simulated_annealing sa_alg(ts, tf, n_T_adj, n_range_adj, bin_size,
-                                      start_range, seed32);
-    pagmo::algorithm algorithm{sa_alg};
+        auto iterations = static_cast<unsigned>(
+            std::get<std::int64_t>(configured_parameters_.at("iterations")));
+        const auto dim = lower.size();
+        const auto evals_per_evolve = n_T_adj * n_range_adj * bin_size * dim;
 
-    pagmo::population population{tuning_problem, 1, seed32};
+        if (budget.function_evaluations) {
+            auto max_evolves = static_cast<unsigned>(
+                *budget.function_evaluations / std::max<std::size_t>(evals_per_evolve, 1));
+            iterations = std::min(iterations, max_evolves);
+        }
 
-    auto iterations = static_cast<unsigned>(
-        std::get<std::int64_t>(configured_parameters_.at("iterations")));
-    const auto dimension = lower.size();
-    const auto evals_per_evolve = n_T_adj * n_range_adj * bin_size * dimension;
+        const auto t0 = std::chrono::steady_clock::now();
+        for (unsigned i = 0; i < iterations; ++i) {
+            population = algorithm.evolve(population);
+            if (budget.function_evaluations && ctx->get_evaluations() >= *budget.function_evaluations)
+                break;
+        }
+        const auto t1 = std::chrono::steady_clock::now();
 
-    if (budget.function_evaluations.has_value()) {
-      const auto max_evolves =
-          static_cast<unsigned>(budget.function_evaluations.value() /
-                                std::max<std::size_t>(evals_per_evolve, 1));
-      iterations = std::min(iterations, max_evolves);
+        fill_hyper_result(result, *ctx, population, iterations, t0, t1, configured_parameters_);
+    } catch (const std::exception &ex) {
+        result.status = core::RunStatus::InternalError;
+        result.message = ex.what();
     }
 
-    const auto start_time = std::chrono::steady_clock::now();
-    // call evolve() multiple times to reach desired iteration count
-    for (unsigned i = 0; i < iterations; ++i) {
-      population = algorithm.evolve(population);
-      // check budget after each evolve
-      if (budget.function_evaluations.has_value() &&
-          context->get_evaluations() >= budget.function_evaluations.value()) {
-        break;
-      }
-    }
-    const auto end_time = std::chrono::steady_clock::now();
-
-    result.status = RunStatus::Success;
-    result.trials = context->trials ? std::move(*context->trials)
-                                    : std::vector<HyperparameterTrialRecord>{};
-
-    const auto best_trial = context->get_best_trial();
-    if (best_trial.has_value()) {
-      result.best_parameters = best_trial->parameters;
-      result.best_objective = best_trial->optimization_result.best_fitness;
-    } else {
-      result.best_objective = population.champion_f()[0];
-    }
-
-    result.budget_usage.wall_time =
-        std::chrono::duration_cast<std::chrono::milliseconds>(end_time -
-                                                              start_time);
-    result.budget_usage.generations = iterations; // number of evolve() calls
-    result.budget_usage.function_evaluations = context->get_evaluations();
-    result.effective_optimizer_parameters = configured_parameters_;
-    result.message = "Hyperparameter optimization completed.";
-  } catch (const std::exception &ex) {
-    result.status = RunStatus::InternalError;
-    result.message = ex.what();
-  }
-
-  return result;
+    return result;
 }
 
 } // namespace hpoea::pagmo_wrappers
