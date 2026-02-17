@@ -93,9 +93,10 @@ core::OptimizationResult PagmoCmaes::run(const core::IProblem &problem,
         const auto generations = compute_generations(configured_parameters_, budget, population_size);
         effective_parameters.insert_or_assign("generations", static_cast<std::int64_t>(generations));
 
-        pagmo::algorithm algorithm{pagmo::cmaes(static_cast<unsigned>(generations), 0.5, 0.3, 0.2, 0.4, sigma0, ftol, xtol, true, false)};
+        const auto seed32 = to_seed32(seed);
+        pagmo::algorithm algorithm{pagmo::cmaes(static_cast<unsigned>(generations), 0.5, 0.3, 0.2, 0.4, sigma0, ftol, xtol, true, false, seed32)};
         pagmo::problem pg_problem{ProblemAdapter{problem}};
-        pagmo::population population{pg_problem, population_size, to_seed32(seed)};
+        pagmo::population population{pg_problem, population_size, seed32};
 
         const auto start_time = std::chrono::steady_clock::now();
         population = algorithm.evolve(population);

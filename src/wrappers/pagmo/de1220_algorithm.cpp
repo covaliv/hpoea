@@ -103,10 +103,11 @@ core::OptimizationResult PagmoDe1220::run(const core::IProblem &problem,
         const auto generations = compute_generations(configured_parameters_, budget, population_size);
         effective_parameters.insert_or_assign("generations", static_cast<std::int64_t>(generations));
 
+        const auto seed32 = to_seed32(seed);
         std::vector<unsigned> allowed_variants = pagmo::de1220_statics<void>::allowed_variants;
-        pagmo::algorithm algorithm{pagmo::de1220(static_cast<unsigned>(generations), allowed_variants, variant_adaptation, ftol, xtol, memory)};
+        pagmo::algorithm algorithm{pagmo::de1220(static_cast<unsigned>(generations), allowed_variants, variant_adaptation, ftol, xtol, memory, seed32)};
         pagmo::problem pg_problem{ProblemAdapter{problem}};
-        pagmo::population population{pg_problem, population_size, to_seed32(seed)};
+        pagmo::population population{pg_problem, population_size, seed32};
 
         const auto start_time = std::chrono::steady_clock::now();
         population = algorithm.evolve(population);
