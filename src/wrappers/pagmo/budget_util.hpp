@@ -64,7 +64,11 @@ inline std::size_t compute_generations(const core::ParameterSet &params,
         gens = std::min(gens, *budget.generations);
 
     if (budget.function_evaluations) {
-        auto max_gens = *budget.function_evaluations / population_size;
+        // reserve population_size fevals for initial population evaluation
+        auto available = *budget.function_evaluations > population_size
+                             ? *budget.function_evaluations - population_size
+                             : 0;
+        auto max_gens = available / population_size;
         gens = std::min(gens, std::max<std::size_t>(max_gens, 1));
     }
 

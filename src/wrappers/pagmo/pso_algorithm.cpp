@@ -124,7 +124,7 @@ OptimizationResult PagmoParticleSwarmOptimization::run(const core::IProblem &pro
 
         result.best_fitness = population.champion_f()[0];
         result.best_solution = population.champion_x();
-        result.budget_usage.function_evaluations = population_size * generations;
+        result.budget_usage.function_evaluations = population_size * (generations + 1);
         result.budget_usage.generations = generations;
         result.budget_usage.wall_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         result.effective_parameters = std::move(effective_parameters);
