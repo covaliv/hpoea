@@ -139,14 +139,16 @@ PagmoSimulatedAnnealingHyperOptimizer::optimize(
         }
 
         const auto t0 = std::chrono::steady_clock::now();
+        unsigned actual_iterations = 0;
         for (unsigned i = 0; i < iterations; ++i) {
             population = algorithm.evolve(population);
+            ++actual_iterations;
             if (budget.function_evaluations && ctx->get_evaluations() >= *budget.function_evaluations)
                 break;
         }
         const auto t1 = std::chrono::steady_clock::now();
 
-        fill_hyper_result(result, *ctx, population, iterations, t0, t1, configured_parameters_);
+        fill_hyper_result(result, *ctx, population, actual_iterations, t0, t1, configured_parameters_);
     } catch (const std::exception &ex) {
         result.status = core::RunStatus::InternalError;
         result.message = ex.what();
