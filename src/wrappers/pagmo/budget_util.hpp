@@ -79,4 +79,10 @@ inline unsigned to_seed32(unsigned long seed) {
     return static_cast<unsigned>(seed & std::numeric_limits<unsigned>::max());
 }
 
+// derive a decorrelated seed for separating algorithm and population rngs
+inline unsigned derive_seed(unsigned long seed, unsigned long salt) {
+    auto mixed = seed ^ (salt * 2654435761UL);
+    return to_seed32(mixed);
+}
+
 } // namespace hpoea::pagmo_wrappers

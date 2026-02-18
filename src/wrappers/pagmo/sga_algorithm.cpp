@@ -85,10 +85,11 @@ core::OptimizationResult PagmoSga::run(const core::IProblem &problem,
         const auto generations = compute_generations(configured_parameters_, budget, population_size);
         effective_parameters.insert_or_assign("generations", static_cast<std::int64_t>(generations));
 
-        const auto seed32 = to_seed32(seed);
-        pagmo::algorithm algorithm{pagmo::sga(static_cast<unsigned>(generations), cr, 1.0, mp, 1.0, 2u, "exponential", "polynomial", "tournament", seed32)};
+        const auto algo_seed = to_seed32(seed);
+        const auto pop_seed = derive_seed(seed, 1);
+        pagmo::algorithm algorithm{pagmo::sga(static_cast<unsigned>(generations), cr, 1.0, mp, 1.0, 2u, "exponential", "polynomial", "tournament", algo_seed)};
         pagmo::problem pg_problem{ProblemAdapter{problem}};
-        pagmo::population population{pg_problem, population_size, seed32};
+        pagmo::population population{pg_problem, population_size, pop_seed};
 
         const auto start_time = std::chrono::steady_clock::now();
         population = algorithm.evolve(population);
