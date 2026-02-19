@@ -156,6 +156,11 @@ void SearchSpace::validate_and_clamp(const ParameterSpace &space) {
         descriptor.integer_range.has_value()) {
       config.integer_bounds = clamp_bounds(config.integer_bounds.value(),
                                            descriptor.integer_range.value());
+      if (config.integer_bounds->lower > config.integer_bounds->upper) {
+        throw ParameterValidationError(
+            "integer bounds for '" + name +
+            "' do not overlap with parameter range");
+      }
     }
   }
 }
