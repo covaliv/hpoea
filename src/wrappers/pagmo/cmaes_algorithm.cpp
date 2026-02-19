@@ -95,7 +95,7 @@ core::OptimizationResult PagmoCmaes::run(const core::IProblem &problem,
 
         const auto algo_seed = to_seed32(seed);
         const auto pop_seed = derive_seed(seed, 1);
-        pagmo::algorithm algorithm{pagmo::cmaes(static_cast<unsigned>(generations), 0.5, 0.3, 0.2, 0.4, sigma0, ftol, xtol, true, false, algo_seed)};
+        pagmo::algorithm algorithm{pagmo::cmaes(static_cast<unsigned>(generations), -1, -1, -1, -1, sigma0, ftol, xtol, true, false, algo_seed)};
         pagmo::problem pg_problem{ProblemAdapter{problem}};
         pagmo::population population{pg_problem, population_size, pop_seed};
 
