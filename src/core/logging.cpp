@@ -1,8 +1,10 @@
 #include "hpoea/core/logging.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <iomanip>
+#include <locale>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -69,7 +71,10 @@ std::string run_status_to_string(hpoea::core::RunStatus status) {
 }
 
 std::string serialize_double(double value) {
+    if (std::isnan(value)) return "null";
+    if (std::isinf(value)) return value > 0 ? "1e308" : "-1e308";
     std::ostringstream oss;
+    oss.imbue(std::locale::classic());
     oss << std::setprecision(17) << value;
     return oss.str();
 }

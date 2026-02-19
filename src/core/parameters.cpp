@@ -1,6 +1,7 @@
 #include "hpoea/core/parameters.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <sstream>
 
 namespace {
@@ -118,6 +119,10 @@ void ParameterSpace::validate_value(const ParameterDescriptor &descriptor, const
             throw ParameterValidationError(message.str());
         }
         const auto numeric = std::get<double>(value);
+        if (!std::isfinite(numeric)) {
+            message << " but received non-finite value";
+            throw ParameterValidationError(message.str());
+        }
         if (descriptor.continuous_range.has_value()) {
             const auto &range = *descriptor.continuous_range;
             if (numeric < range.lower || numeric > range.upper) {
