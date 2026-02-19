@@ -4,6 +4,7 @@
 #include "hpoea/core/problem.hpp"
 #include "hpoea/core/types.hpp"
 
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -12,7 +13,7 @@ namespace hpoea::core {
 
 struct OptimizationResult {
     RunStatus status{RunStatus::InternalError};
-    double best_fitness{0.0};
+    double best_fitness{std::numeric_limits<double>::infinity()};
     std::vector<double> best_solution;
     BudgetUsage budget_usage{};
     ParameterSet effective_parameters{};
