@@ -42,14 +42,14 @@ ParameterSpace make_parameter_space() {
     d = {};
     d.name = "variant";
     d.type = ParameterType::Integer;
-    d.integer_range = hpoea::core::IntegerRange{1, 10};
+    d.integer_range = hpoea::core::IntegerRange{1, 18};
     d.default_value = std::int64_t{2};
     space.add_descriptor(d);
 
     d = {};
     d.name = "variant_adptv";
     d.type = ParameterType::Integer;
-    d.integer_range = hpoea::core::IntegerRange{1, 10};
+    d.integer_range = hpoea::core::IntegerRange{1, 2};
     d.default_value = std::int64_t{1};
     space.add_descriptor(d);
 
