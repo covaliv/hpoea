@@ -48,12 +48,19 @@ inline void fill_hyper_result(core::HyperparameterOptimizationResult &result,
 
     if (ctx.trials) {
         result.trials = std::move(*ctx.trials);
-        ctx.trials->clear();
     }
 
     if (auto best = ctx.get_best_trial()) {
         result.best_parameters = best->parameters;
         result.best_objective = best->optimization_result.best_fitness;
+    } else if (!result.trials.empty()) {
+        // fallback: find best trial from recorded results
+        auto it = std::min_element(result.trials.begin(), result.trials.end(),
+            [](const auto &a, const auto &b) {
+                return a.optimization_result.best_fitness < b.optimization_result.best_fitness;
+            });
+        result.best_parameters = it->parameters;
+        result.best_objective = it->optimization_result.best_fitness;
     } else {
         const auto &f = population.champion_f();
         result.best_objective = f.empty() ? std::numeric_limits<double>::max() : f[0];
