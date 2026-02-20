@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <limits>
+#include <random>
 #include <stdexcept>
 #include <variant>
 
@@ -79,10 +80,12 @@ inline unsigned to_seed32(unsigned long seed) {
     return static_cast<unsigned>(seed & std::numeric_limits<unsigned>::max());
 }
 
-// derive a decorrelated seed for separating algorithm and population rngs
+// derive a different seed by mixing with a salt value
 inline unsigned derive_seed(unsigned long seed, unsigned long salt) {
-    auto mixed = seed ^ (salt * 2654435761UL);
-    return to_seed32(mixed);
+    std::mt19937 rng(to_seed32(seed));
+    for (unsigned long i = 0; i < salt; ++i)
+        rng.discard(1);
+    return rng();
 }
 
 } // namespace hpoea::pagmo_wrappers
