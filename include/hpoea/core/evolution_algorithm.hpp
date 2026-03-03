@@ -6,6 +6,7 @@
 
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -15,7 +16,11 @@ struct OptimizationResult {
     RunStatus status{RunStatus::InternalError};
     double best_fitness{std::numeric_limits<double>::infinity()};
     std::vector<double> best_solution;
+    RequestedBudget requested_budget{};
+    EffectiveBudget effective_budget{};
+    ObservedUsage observed_usage{};
     BudgetUsage budget_usage{};
+    std::optional<ErrorInfo> error_info{};
     ParameterSet effective_parameters{};
     unsigned long seed{0};
     std::string message;
