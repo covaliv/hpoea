@@ -72,49 +72,18 @@ void PagmoSga::configure(const core::ParameterSet &parameters) {
 core::OptimizationResult PagmoSga::run(const core::IProblem &problem,
                                        const core::Budget &budget,
                                        unsigned long seed) {
-    OptimizationResult result;
-    result.status = core::RunStatus::InternalError;
-    result.seed = seed;
+    const auto cr = get_double_param(configured_parameters_, "crossover_probability");
+    const auto mp = get_double_param(configured_parameters_, "mutation_probability");
 
-    try {
-        const auto population_size = get_int_param(configured_parameters_, "population_size");
-        const auto cr = get_double_param(configured_parameters_, "crossover_probability");
-        const auto mp = get_double_param(configured_parameters_, "mutation_probability");
-
-        auto effective_parameters = configured_parameters_;
-        const auto generations = compute_generations(configured_parameters_, budget, population_size);
-        effective_parameters.insert_or_assign("generations", static_cast<std::int64_t>(generations));
-
-        const auto algo_seed = to_seed32(seed);
-        const auto pop_seed = derive_seed(seed, 1);
-        pagmo::algorithm algorithm{pagmo::sga(static_cast<unsigned>(generations), cr, 1.0, mp, 1.0, 2u, "exponential", "polynomial", "tournament", algo_seed)};
-        pagmo::problem pg_problem{ProblemAdapter{problem}};
-        pagmo::population population{pg_problem, population_size, pop_seed};
-
-        const auto start_time = std::chrono::steady_clock::now();
-        population = algorithm.evolve(population);
-        const auto end_time = std::chrono::steady_clock::now();
-
-        result.best_fitness = population.champion_f()[0];
-        result.best_solution = population.champion_x();
-        result.budget_usage.function_evaluations = population_size * (generations + 1);
-        result.budget_usage.generations = generations;
-        result.budget_usage.wall_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        result.effective_parameters = std::move(effective_parameters);
-
-        if (budget.wall_time.has_value() && result.budget_usage.wall_time > budget.wall_time.value()) {
-            result.status = core::RunStatus::BudgetExceeded;
-            result.message = "wall-time budget exceeded";
-        } else {
-            result.status = core::RunStatus::Success;
-            result.message = "optimization completed";
-        }
-    } catch (const std::exception &ex) {
-        result.status = core::RunStatus::InternalError;
-        result.message = ex.what();
-    }
-
-    return result;
+    return run_population(
+        problem,
+        budget,
+        configured_parameters_,
+        seed,
+        [=](unsigned generations, unsigned algo_seed) {
+            return pagmo::algorithm{
+                pagmo::sga(generations, cr, 1.0, mp, 1.0, 2u, "exponential", "polynomial", "tournament", algo_seed)};
+        });
 }
 
 std::unique_ptr<core::IEvolutionaryAlgorithm> PagmoSga::clone() const {
@@ -130,5 +99,4 @@ core::EvolutionaryAlgorithmPtr PagmoSgaFactory::create() const {
 }
 
 } // namespace hpoea::pagmo_wrappers
-
 

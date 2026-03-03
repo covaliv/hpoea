@@ -2,12 +2,18 @@
 
 #include "hpoea/core/problem.hpp"
 
+#include <cmath>
 #include <pagmo/types.hpp>
 #include <stdexcept>
 #include <string>
 #include <utility>
 
 namespace hpoea::pagmo_wrappers {
+
+class EvaluationFailure final : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
 
 class ProblemAdapter {
 public:
@@ -16,7 +22,19 @@ public:
     explicit ProblemAdapter(const hpoea::core::IProblem &problem) : problem_(&problem) {}
 
     [[nodiscard]] pagmo::vector_double fitness(const pagmo::vector_double &decision_vector) const {
-        return {problem().evaluate(decision_vector)};
+        try {
+            const auto value = problem().evaluate(decision_vector);
+            if (!std::isfinite(value)) {
+                throw EvaluationFailure("problem evaluation returned non-finite value");
+            }
+            return {value};
+        } catch (const EvaluationFailure &) {
+            throw;
+        } catch (const std::exception &ex) {
+            throw EvaluationFailure(ex.what());
+        } catch (...) {
+            throw EvaluationFailure("problem evaluation failed with unknown error");
+        }
     }
 
     [[nodiscard]] std::pair<pagmo::vector_double, pagmo::vector_double> get_bounds() const {
@@ -46,4 +64,3 @@ private:
 };
 
 } // namespace hpoea::pagmo_wrappers
-
