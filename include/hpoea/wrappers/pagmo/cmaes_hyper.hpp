@@ -15,6 +15,8 @@ public:
 
     [[nodiscard]] const core::ParameterSpace &parameter_space() const noexcept override { return parameter_space_; }
 
+    [[nodiscard]] core::HyperparameterOptimizerPtr clone() const override;
+
     void configure(const core::ParameterSet &parameters) override;
 
     void set_search_space(std::shared_ptr<core::SearchSpace> search_space);
@@ -22,7 +24,8 @@ public:
     [[nodiscard]] core::HyperparameterOptimizationResult optimize(
         const core::IEvolutionaryAlgorithmFactory &algorithm_factory,
         const core::IProblem &problem,
-        const core::Budget &budget,
+        const core::Budget &optimizer_budget,
+        const core::Budget &algorithm_budget,
         unsigned long seed) override;
 
 private:

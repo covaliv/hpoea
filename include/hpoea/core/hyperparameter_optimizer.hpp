@@ -45,12 +45,15 @@ public:
 
     [[nodiscard]] virtual const ParameterSpace &parameter_space() const noexcept = 0;
 
+    [[nodiscard]] virtual std::unique_ptr<IHyperparameterOptimizer> clone() const = 0;
+
     virtual void configure(const ParameterSet &parameters) = 0;
 
     [[nodiscard]] virtual HyperparameterOptimizationResult optimize(
         const IEvolutionaryAlgorithmFactory &algorithm_factory,
         const IProblem &problem,
-        const Budget &budget,
+        const Budget &optimizer_budget,
+        const Budget &algorithm_budget,
         unsigned long seed) = 0;
 };
 
