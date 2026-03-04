@@ -71,8 +71,7 @@ std::string run_status_to_string(hpoea::core::RunStatus status) {
 }
 
 std::string serialize_double(double value) {
-    if (std::isnan(value)) return "null";
-    if (std::isinf(value)) return value > 0 ? "1e308" : "-1e308";
+    if (!std::isfinite(value)) return "null";
     std::ostringstream oss;
     oss.imbue(std::locale::classic());
     oss << std::setprecision(17) << value;
@@ -131,6 +130,77 @@ std::string serialize_parameter_set(const hpoea::core::ParameterSet &parameters)
     return oss.str();
 }
 
+std::string serialize_requested_budget(const hpoea::core::RequestedBudget &budget) {
+    std::ostringstream oss;
+    oss << '{';
+    if (budget.function_evaluations.has_value()) {
+        oss << "\"function_evaluations\":" << *budget.function_evaluations;
+    } else {
+        oss << "\"function_evaluations\":null";
+    }
+    oss << ',';
+    if (budget.generations.has_value()) {
+        oss << "\"generations\":" << *budget.generations;
+    } else {
+        oss << "\"generations\":null";
+    }
+    oss << ',';
+    if (budget.wall_time.has_value()) {
+        oss << "\"wall_time_ms\":" << budget.wall_time->count();
+    } else {
+        oss << "\"wall_time_ms\":null";
+    }
+    oss << '}';
+    return oss.str();
+}
+
+std::string serialize_effective_budget(const hpoea::core::EffectiveBudget &budget) {
+    std::ostringstream oss;
+    oss << '{';
+    if (budget.function_evaluations.has_value()) {
+        oss << "\"function_evaluations\":" << *budget.function_evaluations;
+    } else {
+        oss << "\"function_evaluations\":null";
+    }
+    oss << ',';
+    if (budget.generations.has_value()) {
+        oss << "\"generations\":" << *budget.generations;
+    } else {
+        oss << "\"generations\":null";
+    }
+    oss << ',';
+    if (budget.wall_time.has_value()) {
+        oss << "\"wall_time_ms\":" << budget.wall_time->count();
+    } else {
+        oss << "\"wall_time_ms\":null";
+    }
+    oss << '}';
+    return oss.str();
+}
+
+std::string serialize_observed_usage(const hpoea::core::ObservedUsage &usage) {
+    std::ostringstream oss;
+    oss << '{'
+        << "\"function_evaluations\":" << usage.function_evaluations << ','
+        << "\"generations\":" << usage.generations << ','
+        << "\"wall_time_ms\":" << usage.wall_time.count()
+        << '}';
+    return oss.str();
+}
+
+std::string serialize_error_info(const std::optional<hpoea::core::ErrorInfo> &error_info) {
+    if (!error_info.has_value()) {
+        return "null";
+    }
+    std::ostringstream oss;
+    oss << '{'
+        << "\"category\":\"" << escape_json(error_info->category) << "\","
+        << "\"code\":\"" << escape_json(error_info->code) << "\","
+        << "\"detail\":\"" << escape_json(error_info->detail) << "\""
+        << '}';
+    return oss.str();
+}
+
 } // namespace
 
 namespace hpoea::core {
@@ -173,6 +243,7 @@ void JsonlLogger::flush() {
 std::string serialize_run_record(const RunRecord &record) {
     std::ostringstream oss;
     oss << '{';
+    oss << "\"schema_version\":2,";
     oss << "\"experiment_id\":\"" << escape_json(record.experiment_id) << "\",";
     oss << "\"problem_id\":\"" << escape_json(record.problem_id) << "\",";
     oss << "\"evolutionary_algorithm\":" << serialize_algorithm_identity(record.evolutionary_algorithm) << ',';
@@ -185,10 +256,14 @@ std::string serialize_run_record(const RunRecord &record) {
     oss << "\"optimizer_parameters\":" << serialize_parameter_set(record.optimizer_parameters) << ',';
     oss << "\"status\":\"" << escape_json(run_status_to_string(record.status)) << "\",";
     oss << "\"objective_value\":" << serialize_double(record.objective_value) << ',';
+    oss << "\"requested_budget\":" << serialize_requested_budget(record.requested_budget) << ',';
+    oss << "\"effective_budget\":" << serialize_effective_budget(record.effective_budget) << ',';
+    oss << "\"observed_usage\":" << serialize_observed_usage(record.observed_usage) << ',';
     oss << "\"budget_usage\":{"
         << "\"function_evaluations\":" << record.budget_usage.function_evaluations << ','
         << "\"generations\":" << record.budget_usage.generations << ','
         << "\"wall_time_ms\":" << record.budget_usage.wall_time.count() << "},";
+    oss << "\"error_info\":" << serialize_error_info(record.error_info) << ',';
     oss << "\"algorithm_seed\":" << record.algorithm_seed << ',';
     if (record.optimizer_seed.has_value()) {
         oss << "\"optimizer_seed\":" << *record.optimizer_seed << ',';
