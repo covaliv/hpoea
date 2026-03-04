@@ -11,13 +11,10 @@
 
 namespace hpoea::pagmo_wrappers {
 
-// creates context for hyperparameter optimization.
-// IMPORTANT: factory and problem must remain valid for the lifetime of the
-// returned context. the caller is responsible for ensuring this.
-inline std::shared_ptr<HyperTuningUdp::Context>
+inline std::shared_ptr<HyperparameterTuningProblem::Context>
 make_hyper_context(const core::IEvolutionaryAlgorithmFactory &factory,
                    const core::IProblem &problem,
-                   const core::Budget &budget,
+                   const core::Budget &algorithm_budget,
                    unsigned long seed,
                    std::shared_ptr<core::SearchSpace> search_space = nullptr) {
     if (factory.parameter_space().empty()) {
@@ -27,10 +24,10 @@ make_hyper_context(const core::IEvolutionaryAlgorithmFactory &factory,
         throw std::invalid_argument("problem dimension cannot be zero");
     }
 
-    auto ctx = std::make_shared<HyperTuningUdp::Context>();
+    auto ctx = std::make_shared<HyperparameterTuningProblem::Context>();
     ctx->factory = &factory;
     ctx->problem = &problem;
-    ctx->algorithm_budget = budget;
+    ctx->algorithm_budget = algorithm_budget;
     ctx->base_seed = seed;
     ctx->trials = std::make_shared<std::vector<core::HyperparameterTrialRecord>>();
     ctx->search_space = std::move(search_space);
@@ -38,7 +35,7 @@ make_hyper_context(const core::IEvolutionaryAlgorithmFactory &factory,
 }
 
 inline void fill_hyper_result(core::HyperparameterOptimizationResult &result,
-                              HyperTuningUdp::Context &ctx,
+                              HyperparameterTuningProblem::Context &ctx,
                               const pagmo::population &population,
                               std::size_t generations,
                               std::chrono::steady_clock::time_point start,
@@ -54,7 +51,6 @@ inline void fill_hyper_result(core::HyperparameterOptimizationResult &result,
         result.best_parameters = best->parameters;
         result.best_objective = best->optimization_result.best_fitness;
     } else if (!result.trials.empty()) {
-        // fallback: find best trial from recorded results
         auto it = std::min_element(result.trials.begin(), result.trials.end(),
             [](const auto &a, const auto &b) {
                 return a.optimization_result.best_fitness < b.optimization_result.best_fitness;
@@ -62,6 +58,8 @@ inline void fill_hyper_result(core::HyperparameterOptimizationResult &result,
         result.best_parameters = it->parameters;
         result.best_objective = it->optimization_result.best_fitness;
     } else {
+        result.status = core::RunStatus::InternalError;
+        result.message = "no valid hyperparameter trial was recorded";
         const auto &f = population.champion_f();
         result.best_objective = f.empty() ? std::numeric_limits<double>::max() : f[0];
     }

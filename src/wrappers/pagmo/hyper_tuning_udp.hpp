@@ -1,5 +1,6 @@
 #pragma once
 
+#include "budget_util.hpp"
 #include "hpoea/core/evolution_algorithm.hpp"
 #include "hpoea/core/hyperparameter_optimizer.hpp"
 #include "hpoea/core/parameters.hpp"
@@ -8,6 +9,7 @@
 #include "hpoea/core/types.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <memory>
 #include <mutex>
@@ -19,7 +21,7 @@
 
 namespace hpoea::pagmo_wrappers {
 
-struct HyperTuningUdp {
+struct HyperparameterTuningProblem {
   struct Context {
     const core::IEvolutionaryAlgorithmFactory *factory{nullptr};
     const core::IProblem *problem{nullptr};
@@ -28,7 +30,7 @@ struct HyperTuningUdp {
     std::shared_ptr<std::vector<core::HyperparameterTrialRecord>> trials;
     std::shared_ptr<core::SearchSpace> search_space;
     mutable std::optional<core::HyperparameterTrialRecord> best_trial;
-    mutable std::size_t evaluations{0};
+    mutable std::atomic<std::size_t> evaluations{0};
     mutable std::mutex mutex;
 
     [[nodiscard]] std::optional<core::HyperparameterTrialRecord>
@@ -38,14 +40,13 @@ struct HyperTuningUdp {
     }
 
     [[nodiscard]] std::size_t get_evaluations() const {
-      std::scoped_lock lock(mutex);
-      return evaluations;
+      return evaluations.load(std::memory_order_relaxed);
     }
   };
 
-  HyperTuningUdp() = default;
+  HyperparameterTuningProblem() = default;
 
-  explicit HyperTuningUdp(std::shared_ptr<Context> context)
+  explicit HyperparameterTuningProblem(std::shared_ptr<Context> context)
       : context_(std::move(context)) {}
 
   [[nodiscard]] std::pair<pagmo::vector_double, pagmo::vector_double>
@@ -147,6 +148,14 @@ struct HyperTuningUdp {
     const auto &ctx = ensure_context();
     const auto &space = ctx.factory->parameter_space();
     const auto &descriptors = space.descriptors();
+    const auto expected_dim = compute_candidate_dimension(ctx, descriptors);
+
+    if (candidate.size() != expected_dim) {
+      throw std::invalid_argument(
+          "HyperparameterTuningProblem candidate dimension mismatch: expected " +
+          std::to_string(expected_dim) + ", got " +
+          std::to_string(candidate.size()));
+    }
 
     core::ParameterSet parameters;
     parameters.reserve(descriptors.size());
@@ -243,11 +252,10 @@ struct HyperTuningUdp {
 
     auto algorithm = ctx.factory->create();
     algorithm->configure(parameters);
-    unsigned long eval_seed;
-    {
-      std::scoped_lock lock(ctx.mutex);
-      eval_seed = ctx.base_seed + static_cast<unsigned long>(ctx.evaluations++);
-    }
+    const auto eval_index =
+      ctx.evaluations.fetch_add(1, std::memory_order_relaxed);
+    const unsigned long eval_seed =
+      derive_seed(ctx.base_seed, static_cast<unsigned long>(eval_index));
 
     const auto result =
         algorithm->run(*ctx.problem, ctx.algorithm_budget, eval_seed);
@@ -270,20 +278,45 @@ struct HyperTuningUdp {
       }
     }
 
-    return pagmo::vector_double{record.optimization_result.best_fitness};
+    constexpr double FAILED_TRIAL_PENALTY = 1e20;
+    const auto fitness = std::isfinite(record.optimization_result.best_fitness)
+        ? record.optimization_result.best_fitness
+        : FAILED_TRIAL_PENALTY;
+    return pagmo::vector_double{fitness};
   }
 
   [[nodiscard]] bool has_gradient() const { return false; }
 
   [[nodiscard]] bool has_hessians() const { return false; }
 
-  [[nodiscard]] std::string get_name() const { return "HyperTuningUdp"; }
+  [[nodiscard]] std::string get_name() const { return "HyperparameterTuningProblem"; }
 
 private:
+  [[nodiscard]] static std::size_t compute_candidate_dimension(
+      const Context &ctx,
+      const std::vector<core::ParameterDescriptor> &descriptors) {
+    std::size_t dim = 0;
+    for (const auto &descriptor : descriptors) {
+      const core::ParameterConfig *config = nullptr;
+      if (ctx.search_space) {
+        config = ctx.search_space->get(descriptor.name);
+      }
+
+      if (config &&
+          (config->mode == core::SearchMode::fixed ||
+           config->mode == core::SearchMode::exclude)) {
+        continue;
+      }
+
+      ++dim;
+    }
+    return dim;
+  }
+
   [[nodiscard]] const Context &ensure_context() const {
     if (!context_) {
       throw std::runtime_error(
-          "HyperTuningUdp used without associated context");
+          "HyperparameterTuningProblem used without associated context");
     }
     return *context_;
   }
