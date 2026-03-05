@@ -130,7 +130,7 @@ std::string serialize_parameter_set(const hpoea::core::ParameterSet &parameters)
     return oss.str();
 }
 
-std::string serialize_requested_budget(const hpoea::core::RequestedBudget &budget) {
+std::string serialize_optional_budget(const hpoea::core::Budget &budget) {
     std::ostringstream oss;
     oss << '{';
     if (budget.function_evaluations.has_value()) {
@@ -175,16 +175,6 @@ std::string serialize_effective_budget(const hpoea::core::EffectiveBudget &budge
         oss << "\"wall_time_ms\":null";
     }
     oss << '}';
-    return oss.str();
-}
-
-std::string serialize_observed_usage(const hpoea::core::ObservedUsage &usage) {
-    std::ostringstream oss;
-    oss << '{'
-        << "\"function_evaluations\":" << usage.function_evaluations << ','
-        << "\"generations\":" << usage.generations << ','
-        << "\"wall_time_ms\":" << usage.wall_time.count()
-        << '}';
     return oss.str();
 }
 
@@ -243,7 +233,7 @@ void JsonlLogger::flush() {
 std::string serialize_run_record(const RunRecord &record) {
     std::ostringstream oss;
     oss << '{';
-    oss << "\"schema_version\":2,";
+    oss << "\"schema_version\":3,";
     oss << "\"experiment_id\":\"" << escape_json(record.experiment_id) << "\",";
     oss << "\"problem_id\":\"" << escape_json(record.problem_id) << "\",";
     oss << "\"evolutionary_algorithm\":" << serialize_algorithm_identity(record.evolutionary_algorithm) << ',';
@@ -256,9 +246,8 @@ std::string serialize_run_record(const RunRecord &record) {
     oss << "\"optimizer_parameters\":" << serialize_parameter_set(record.optimizer_parameters) << ',';
     oss << "\"status\":\"" << escape_json(run_status_to_string(record.status)) << "\",";
     oss << "\"objective_value\":" << serialize_double(record.objective_value) << ',';
-    oss << "\"requested_budget\":" << serialize_requested_budget(record.requested_budget) << ',';
+    oss << "\"requested_budget\":" << serialize_optional_budget(record.requested_budget) << ',';
     oss << "\"effective_budget\":" << serialize_effective_budget(record.effective_budget) << ',';
-    oss << "\"observed_usage\":" << serialize_observed_usage(record.observed_usage) << ',';
     oss << "\"budget_usage\":{"
         << "\"function_evaluations\":" << record.budget_usage.function_evaluations << ','
         << "\"generations\":" << record.budget_usage.generations << ','

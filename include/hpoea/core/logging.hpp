@@ -21,9 +21,8 @@ struct RunRecord {
     ParameterSet optimizer_parameters;
     RunStatus status{RunStatus::InternalError};
     double objective_value{0.0};
-    RequestedBudget requested_budget{};
+    Budget requested_budget{};
     EffectiveBudget effective_budget{};
-    ObservedUsage observed_usage{};
     BudgetUsage budget_usage{};
     std::optional<ErrorInfo> error_info{};
     unsigned long algorithm_seed{0};

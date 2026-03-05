@@ -89,7 +89,7 @@ inline void finalize_budget_fields(core::OptimizationResult &result,
                                    const core::Budget &budget,
                                    std::size_t generations,
                                    std::size_t population_size) {
-    result.requested_budget = core::to_requested_budget(budget);
+    result.requested_budget = budget;
 
     std::optional<std::size_t> effective_fevals = std::nullopt;
     if (budget.function_evaluations.has_value()) {
@@ -106,7 +106,7 @@ inline void finalize_budget_fields(core::OptimizationResult &result,
         generations,
         effective_fevals,
         budget.wall_time);
-    result.observed_usage = core::to_observed_usage(result.budget_usage);
+
 }
 
 inline unsigned to_seed32(unsigned long seed);

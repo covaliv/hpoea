@@ -5,6 +5,7 @@
 #include "hpoea/core/types.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <exception>
 #include <functional>
 #include <future>
@@ -194,7 +195,6 @@ RunRecord build_run_record(const ExperimentConfig &config,
     log_record.objective_value = trial_record.optimization_result.best_fitness;
     log_record.requested_budget = trial_record.optimization_result.requested_budget;
     log_record.effective_budget = trial_record.optimization_result.effective_budget;
-    log_record.observed_usage = trial_record.optimization_result.observed_usage;
     log_record.budget_usage = trial_record.optimization_result.budget_usage;
     log_record.error_info = trial_record.optimization_result.error_info;
     log_record.algorithm_seed = trial_record.optimization_result.seed;
@@ -312,7 +312,8 @@ ExperimentResult ParallelExperimentManager::run_experiment(const ExperimentConfi
     std::vector<HyperparameterOptimizationResult> optimization_results(config.trials_per_optimizer);
     std::mutex logger_mutex;
     std::mutex worker_error_mutex;
-    std::exception_ptr worker_error;
+    std::vector<std::pair<std::size_t, std::exception_ptr>> worker_errors;
+    std::atomic<bool> stop_requested{false};
 
     const std::size_t num_islands = std::min({config.islands, config.trials_per_optimizer, num_threads_});
     const std::size_t trials_per_island = (config.trials_per_optimizer + num_islands - 1) / num_islands;
@@ -332,6 +333,7 @@ ExperimentResult ParallelExperimentManager::run_experiment(const ExperimentConfi
                 const std::size_t end_trial = std::min(start_trial + trials_per_island, config.trials_per_optimizer);
 
                 for (std::size_t trial = start_trial; trial < end_trial; ++trial) {
+                    if (stop_requested.load(std::memory_order_relaxed)) break;
                     const unsigned long optimizer_seed = seeds[trial];
 
                     auto optimization_result = worker_optimizer->optimize(
@@ -360,10 +362,9 @@ ExperimentResult ParallelExperimentManager::run_experiment(const ExperimentConfi
                     }
                 }
             } catch (...) {
+                stop_requested.store(true, std::memory_order_relaxed);
                 std::scoped_lock lock(worker_error_mutex);
-                if (!worker_error) {
-                    worker_error = std::current_exception();
-                }
+                worker_errors.emplace_back(island_idx, std::current_exception());
             }
         });
     }
@@ -372,8 +373,19 @@ ExperimentResult ParallelExperimentManager::run_experiment(const ExperimentConfi
         worker.join();
     }
 
-    if (worker_error) {
-        std::rethrow_exception(worker_error);
+    if (!worker_errors.empty()) {
+        std::string combined = std::to_string(worker_errors.size()) + " worker(s) failed in parallel experiment:";
+        for (const auto &[island, eptr] : worker_errors) {
+            combined += "\n  [island " + std::to_string(island) + "]: ";
+            try {
+                std::rethrow_exception(eptr);
+            } catch (const std::exception &ex) {
+                combined += ex.what();
+            } catch (...) {
+                combined += "unknown exception";
+            }
+        }
+        throw std::runtime_error(combined);
     }
 
     result.optimizer_results = std::move(optimization_results);
