@@ -33,7 +33,11 @@ void ParameterSpace::add_descriptor(ParameterDescriptor descriptor) {
         throw ParameterValidationError("parameter descriptor already exists: " + descriptor.name);
     }
 
-    if (descriptor.type == ParameterType::Continuous && descriptor.continuous_range.has_value()) {
+    if (descriptor.type == ParameterType::Continuous) {
+        if (!descriptor.continuous_range.has_value()) {
+            throw ParameterValidationError(
+                "continuous parameter '" + descriptor.name + "' requires bounds");
+        }
         const auto &range = *descriptor.continuous_range;
         if (range.lower > range.upper) {
             throw ParameterValidationError(
@@ -41,7 +45,11 @@ void ParameterSpace::add_descriptor(ParameterDescriptor descriptor) {
         }
     }
 
-    if (descriptor.type == ParameterType::Integer && descriptor.integer_range.has_value()) {
+    if (descriptor.type == ParameterType::Integer) {
+        if (!descriptor.integer_range.has_value()) {
+            throw ParameterValidationError(
+                "integer parameter '" + descriptor.name + "' requires bounds");
+        }
         const auto &range = *descriptor.integer_range;
         if (range.lower > range.upper) {
             throw ParameterValidationError(
@@ -172,4 +180,3 @@ void ParameterSpace::validate_value(const ParameterDescriptor &descriptor, const
 }
 
 } // namespace hpoea::core
-
