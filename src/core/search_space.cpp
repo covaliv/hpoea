@@ -11,6 +11,11 @@ void SearchSpace::set(const std::string &name, ParameterConfig config) {
     validate_transform_bounds(config.continuous_bounds.value(),
                               config.transform);
   }
+  if (config.integer_bounds.has_value() &&
+      config.integer_bounds->lower > config.integer_bounds->upper) {
+    throw ParameterValidationError("invalid integer bounds for '" + name +
+                                   "': lower > upper");
+  }
   configs_[name] = std::move(config);
 }
 
@@ -86,6 +91,11 @@ void SearchSpace::validate(const ParameterSpace &space) const {
 
     const auto &descriptor = space.descriptor(name);
 
+    if (config.mode == SearchMode::fixed && !config.fixed_value.has_value()) {
+      throw ParameterValidationError("fixed mode for '" + name +
+                                     "' requires fixed_value");
+    }
+
     if (config.mode == SearchMode::fixed && config.fixed_value.has_value()) {
       const auto &value = config.fixed_value.value();
       if (descriptor.type == ParameterType::Continuous) {
@@ -112,6 +122,65 @@ void SearchSpace::validate(const ParameterSpace &space) const {
               v > descriptor.integer_range->upper) {
             throw ParameterValidationError("fixed value for '" + name +
                                            "' outside valid range");
+          }
+        }
+      } else if (descriptor.type == ParameterType::Boolean) {
+        if (!std::holds_alternative<bool>(value)) {
+          throw ParameterValidationError("fixed value for '" + name +
+                                         "' must be boolean");
+        }
+      } else if (descriptor.type == ParameterType::Categorical) {
+        if (!std::holds_alternative<std::string>(value)) {
+          throw ParameterValidationError("fixed value for '" + name +
+                                         "' must be string");
+        }
+        const auto &label = std::get<std::string>(value);
+        if (std::find(descriptor.categorical_choices.begin(),
+                      descriptor.categorical_choices.end(),
+                      label) == descriptor.categorical_choices.end()) {
+          throw ParameterValidationError("fixed value for '" + name +
+                                         "' is not a valid categorical choice");
+        }
+      }
+    }
+
+    if (config.mode == SearchMode::optimize && !config.discrete_choices.empty()) {
+      if (descriptor.type != ParameterType::Integer &&
+          descriptor.type != ParameterType::Categorical) {
+        throw ParameterValidationError(
+            "discrete choices specified for unsupported parameter type: " +
+            name);
+      }
+
+      for (const auto &choice : config.discrete_choices) {
+        if (descriptor.type == ParameterType::Integer) {
+          if (!std::holds_alternative<std::int64_t>(choice)) {
+            throw ParameterValidationError(
+                "all discrete choices for '" + name +
+                "' must be integer values");
+          }
+          if (descriptor.integer_range.has_value()) {
+            const auto value = std::get<std::int64_t>(choice);
+            if (value < descriptor.integer_range->lower ||
+                value > descriptor.integer_range->upper) {
+              throw ParameterValidationError(
+                  "discrete choice for '" + name +
+                  "' outside integer parameter range");
+            }
+          }
+        } else {
+          if (!std::holds_alternative<std::string>(choice)) {
+            throw ParameterValidationError(
+                "all discrete choices for '" + name +
+                "' must be categorical string values");
+          }
+          const auto &label = std::get<std::string>(choice);
+          if (std::find(descriptor.categorical_choices.begin(),
+                        descriptor.categorical_choices.end(),
+                        label) == descriptor.categorical_choices.end()) {
+            throw ParameterValidationError(
+                "discrete choice for '" + name +
+                "' is not a valid categorical value");
           }
         }
       }
