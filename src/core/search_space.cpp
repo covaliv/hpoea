@@ -329,7 +329,7 @@ IntegerRange clamp_bounds(IntegerRange custom, IntegerRange constraint) {
           std::min(custom.upper, constraint.upper)};
 }
 
-double apply_transform(double value, Transform transform) {
+double inverse_transform(double value, Transform transform) {
   switch (transform) {
   case Transform::none:
     return value;

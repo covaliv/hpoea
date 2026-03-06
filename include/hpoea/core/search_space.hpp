@@ -73,7 +73,7 @@ private:
   std::unordered_map<std::string, ParameterConfig> configs_;
 };
 
-[[nodiscard]] double apply_transform(double value, Transform transform);
+[[nodiscard]] double inverse_transform(double value, Transform transform);
 [[nodiscard]] ContinuousRange transform_bounds(ContinuousRange bounds,
                                                Transform transform);
 void validate_transform_bounds(ContinuousRange bounds, Transform transform);

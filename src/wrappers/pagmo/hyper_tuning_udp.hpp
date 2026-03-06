@@ -195,7 +195,7 @@ struct HyperparameterTuningProblem {
           transform = config->transform;
         }
 
-        double numeric = core::apply_transform(value, transform);
+        double numeric = core::inverse_transform(value, transform);
         numeric = std::clamp(numeric, range.lower, range.upper);
         parameters.emplace(descriptor.name, numeric);
         break;
@@ -248,7 +248,16 @@ struct HyperparameterTuningProblem {
       }
     }
 
-    parameters = space.apply_defaults(parameters);
+    // apply defaults only for non-excluded parameters
+    for (const auto &desc : descriptors) {
+      if (parameters.contains(desc.name)) continue;
+      const core::ParameterConfig *pc = nullptr;
+      if (ctx.search_space) pc = ctx.search_space->get(desc.name);
+      if (pc && pc->mode == core::SearchMode::exclude) continue;
+      if (desc.default_value.has_value()) {
+        parameters.emplace(desc.name, *desc.default_value);
+      }
+    }
 
     auto algorithm = ctx.factory->create();
     algorithm->configure(parameters);
@@ -269,10 +278,15 @@ struct HyperparameterTuningProblem {
       if (ctx.trials) {
         ctx.trials->push_back(record);
       }
+      const bool candidate_finite =
+          std::isfinite(record.optimization_result.best_fitness);
+      const bool current_finite = ctx.best_trial &&
+          std::isfinite(ctx.best_trial->optimization_result.best_fitness);
       const bool should_update_best =
           !ctx.best_trial ||
-          record.optimization_result.best_fitness <
-              ctx.best_trial->optimization_result.best_fitness;
+          (candidate_finite && (!current_finite ||
+              record.optimization_result.best_fitness <
+                  ctx.best_trial->optimization_result.best_fitness));
       if (should_update_best) {
         ctx.best_trial = record;
       }
