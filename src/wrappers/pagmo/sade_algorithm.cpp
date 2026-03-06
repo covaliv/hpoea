@@ -27,7 +27,7 @@ ParameterSpace make_parameter_space() {
     ParameterDescriptor d;
     d.name = "population_size";
     d.type = ParameterType::Integer;
-    d.integer_range = hpoea::core::IntegerRange{5, 2000};
+    d.integer_range = hpoea::core::IntegerRange{5, 5000};
     d.default_value = std::int64_t{50};
     d.required = true;
     space.add_descriptor(d);
@@ -89,47 +89,46 @@ PagmoSelfAdaptiveDE::PagmoSelfAdaptiveDE()
       configured_parameters_(parameter_space_.apply_defaults({})),
       identity_(make_identity()) {}
 
-PagmoSelfAdaptiveDE::PagmoSelfAdaptiveDE(const PagmoSelfAdaptiveDE &other) =
-    default;
+PagmoSelfAdaptiveDE::PagmoSelfAdaptiveDE(const PagmoSelfAdaptiveDE &other) = default;
 
-PagmoSelfAdaptiveDE &
-PagmoSelfAdaptiveDE::operator=(const PagmoSelfAdaptiveDE &other) = default;
+PagmoSelfAdaptiveDE &PagmoSelfAdaptiveDE::operator=(const PagmoSelfAdaptiveDE &other) = default;
 
 void PagmoSelfAdaptiveDE::configure(const core::ParameterSet &parameters) {
     configured_parameters_ = parameter_space_.apply_defaults(parameters);
+    parameter_space_.validate(configured_parameters_);
 }
 
 OptimizationResult PagmoSelfAdaptiveDE::run(const core::IProblem &problem,
                                             const core::Budget &budget,
                                             unsigned long seed) {
-  const auto variant = static_cast<unsigned>(get_int_param(configured_parameters_, "variant"));
-  const auto variant_adptv = static_cast<unsigned>(get_int_param(configured_parameters_, "variant_adptv"));
-  const auto ftol = get_double_param(configured_parameters_, "ftol");
-  const auto xtol = get_double_param(configured_parameters_, "xtol");
-  const auto memory = get_bool_param(configured_parameters_, "memory");
+    const auto variant = static_cast<unsigned>(get_int_param(configured_parameters_, "variant"));
+    const auto variant_adptv = static_cast<unsigned>(get_int_param(configured_parameters_, "variant_adptv"));
+    const auto ftol = get_double_param(configured_parameters_, "ftol");
+    const auto xtol = get_double_param(configured_parameters_, "xtol");
+    const auto memory = get_bool_param(configured_parameters_, "memory");
 
-  return run_population(
-      problem,
-      budget,
-      configured_parameters_,
-      seed,
-      [=](unsigned generations, unsigned algo_seed) {
-        return pagmo::algorithm{
-            pagmo::sade(generations, variant, variant_adptv, ftol, xtol,
-                        memory, algo_seed)};
-      });
+    return run_population(
+        problem,
+        budget,
+        configured_parameters_,
+        seed,
+        [=](unsigned generations, unsigned algo_seed) {
+            return pagmo::algorithm{
+                pagmo::sade(generations, variant, variant_adptv, ftol, xtol,
+                            memory, algo_seed)};
+        });
 }
 
 std::unique_ptr<core::IEvolutionaryAlgorithm>
 PagmoSelfAdaptiveDE::clone() const {
-  return std::make_unique<PagmoSelfAdaptiveDE>(*this);
+    return std::make_unique<PagmoSelfAdaptiveDE>(*this);
 }
 
 PagmoSelfAdaptiveDEFactory::PagmoSelfAdaptiveDEFactory()
     : parameter_space_(make_parameter_space()), identity_(make_identity()) {}
 
 core::EvolutionaryAlgorithmPtr PagmoSelfAdaptiveDEFactory::create() const {
-  return std::make_unique<PagmoSelfAdaptiveDE>();
+    return std::make_unique<PagmoSelfAdaptiveDE>();
 }
 
 } // namespace hpoea::pagmo_wrappers

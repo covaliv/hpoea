@@ -23,7 +23,7 @@ ParameterSpace make_parameter_space() {
     ParameterDescriptor d;
     d.name = "population_size";
     d.type = ParameterType::Integer;
-    d.integer_range = hpoea::core::IntegerRange{5, 2000};
+    d.integer_range = hpoea::core::IntegerRange{5, 5000};
     d.default_value = std::int64_t{50};
     d.required = true;
     space.add_descriptor(d);
@@ -92,6 +92,7 @@ PagmoParticleSwarmOptimization &PagmoParticleSwarmOptimization::operator=(const 
 
 void PagmoParticleSwarmOptimization::configure(const core::ParameterSet &parameters) {
     configured_parameters_ = parameter_space_.apply_defaults(parameters);
+    parameter_space_.validate(configured_parameters_);
 }
 
 OptimizationResult PagmoParticleSwarmOptimization::run(const core::IProblem &problem,

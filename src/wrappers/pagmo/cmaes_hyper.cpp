@@ -111,11 +111,12 @@ core::HyperparameterOptimizerPtr PagmoCmaesHyperOptimizer::clone() const {
 
 void PagmoCmaesHyperOptimizer::configure(const core::ParameterSet &parameters) {
     configured_parameters_ = parameter_space_.apply_defaults(parameters);
+    parameter_space_.validate(configured_parameters_);
 }
 
 void PagmoCmaesHyperOptimizer::set_search_space(
     std::shared_ptr<core::SearchSpace> search_space) {
-  search_space_ = std::move(search_space);
+    search_space_ = std::move(search_space);
 }
 
 core::HyperparameterOptimizationResult PagmoCmaesHyperOptimizer::optimize(
@@ -163,7 +164,7 @@ core::HyperparameterOptimizationResult PagmoCmaesHyperOptimizer::optimize(
             std::get<bool>(configured_parameters_.at("force_bounds")),
             seed32}};
 
-        const auto t0 = start_time;
+        const auto t0 = std::chrono::steady_clock::now();
         pagmo::population population{tuning_problem, pop_size, derive_seed(seed, 1)};
         if (generations > 0) {
             population = algorithm.evolve(population);

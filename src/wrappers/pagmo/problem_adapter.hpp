@@ -41,6 +41,19 @@ public:
         const auto &reference = problem();
         auto lower = reference.lower_bounds();
         auto upper = reference.upper_bounds();
+        if (lower.size() != upper.size()) {
+            throw std::invalid_argument("lower/upper bounds dimension mismatch: " +
+                std::to_string(lower.size()) + " vs " + std::to_string(upper.size()));
+        }
+        if (lower.size() != static_cast<std::size_t>(reference.dimension())) {
+            throw std::invalid_argument("bounds dimension (" + std::to_string(lower.size()) +
+                ") != problem dimension (" + std::to_string(reference.dimension()) + ")");
+        }
+        for (std::size_t i = 0; i < lower.size(); ++i) {
+            if (lower[i] > upper[i]) {
+                throw std::invalid_argument("lower bound > upper bound at dimension " + std::to_string(i));
+            }
+        }
         return {pagmo::vector_double(lower.begin(), lower.end()), pagmo::vector_double(upper.begin(), upper.end())};
     }
 

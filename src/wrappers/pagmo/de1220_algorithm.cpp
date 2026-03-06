@@ -35,7 +35,7 @@ ParameterSpace make_parameter_space() {
     d.name = "generations";
     d.type = ParameterType::Integer;
     d.integer_range = hpoea::core::IntegerRange{1, 1000};
-    d.default_value = std::int64_t{200};
+    d.default_value = std::int64_t{100};
     space.add_descriptor(d);
 
     d = {};
@@ -83,6 +83,7 @@ PagmoDe1220::PagmoDe1220()
 
 void PagmoDe1220::configure(const core::ParameterSet &parameters) {
     configured_parameters_ = parameter_space_.apply_defaults(parameters);
+    parameter_space_.validate(configured_parameters_);
 }
 
 core::OptimizationResult PagmoDe1220::run(const core::IProblem &problem,
@@ -92,14 +93,14 @@ core::OptimizationResult PagmoDe1220::run(const core::IProblem &problem,
     const auto xtol = get_double_param(configured_parameters_, "xtol");
     const auto variant_adaptation = static_cast<unsigned>(get_int_param(configured_parameters_, "variant_adaptation"));
     const auto memory = get_bool_param(configured_parameters_, "memory");
-    std::vector<unsigned> allowed_variants = pagmo::de1220_statics<void>::allowed_variants;
+    static const std::vector<unsigned> allowed_variants = pagmo::de1220_statics<void>::allowed_variants;
 
     return run_population(
         problem,
         budget,
         configured_parameters_,
         seed,
-        [=, allowed_variants = std::move(allowed_variants)](unsigned generations, unsigned algo_seed) mutable {
+        [=](unsigned generations, unsigned algo_seed) {
             return pagmo::algorithm{
                 pagmo::de1220(generations, allowed_variants, variant_adaptation, ftol, xtol, memory, algo_seed)};
         });

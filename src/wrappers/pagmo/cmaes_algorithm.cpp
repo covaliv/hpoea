@@ -74,6 +74,7 @@ PagmoCmaes::PagmoCmaes()
 
 void PagmoCmaes::configure(const core::ParameterSet &parameters) {
     configured_parameters_ = parameter_space_.apply_defaults(parameters);
+    parameter_space_.validate(configured_parameters_);
 }
 
 core::OptimizationResult PagmoCmaes::run(const core::IProblem &problem,
@@ -108,4 +109,3 @@ core::EvolutionaryAlgorithmPtr PagmoCmaesFactory::create() const {
 }
 
 } // namespace hpoea::pagmo_wrappers
-

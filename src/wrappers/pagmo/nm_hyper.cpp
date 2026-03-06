@@ -64,11 +64,12 @@ core::HyperparameterOptimizerPtr PagmoNelderMeadHyperOptimizer::clone() const {
 
 void PagmoNelderMeadHyperOptimizer::configure(const core::ParameterSet &parameters) {
     configured_parameters_ = parameter_space_.apply_defaults(parameters);
+    parameter_space_.validate(configured_parameters_);
 }
 
 void PagmoNelderMeadHyperOptimizer::set_search_space(
     std::shared_ptr<core::SearchSpace> search_space) {
-  search_space_ = std::move(search_space);
+    search_space_ = std::move(search_space);
 }
 
 core::HyperparameterOptimizationResult PagmoNelderMeadHyperOptimizer::optimize(
@@ -103,7 +104,6 @@ core::HyperparameterOptimizationResult PagmoNelderMeadHyperOptimizer::optimize(
 
         const auto xtol_rel = std::get<double>(configured_parameters_.at("xtol_rel"));
         const auto ftol_rel = std::get<double>(configured_parameters_.at("ftol_rel"));
-        const auto seed32 = to_seed32(seed);
 
         pagmo::nlopt nm_alg("neldermead");
         nm_alg.set_maxeval(static_cast<int>(max_fevals));
