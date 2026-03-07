@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <functional>
 #include <limits>
 #include <optional>
 #include <pagmo/algorithm.hpp>
@@ -56,6 +57,17 @@ inline bool get_bool_param(const core::ParameterSet &params, const char *name) {
         throw std::invalid_argument(std::string("parameter '") + name + "' must be boolean");
     }
     return std::get<bool>(it->second);
+}
+
+inline const std::string &get_string_param(const core::ParameterSet &params, const char *name) {
+    auto it = params.find(name);
+    if (it == params.end()) {
+        throw std::invalid_argument(std::string("missing parameter: ") + name);
+    }
+    if (!std::holds_alternative<std::string>(it->second)) {
+        throw std::invalid_argument(std::string("parameter '") + name + "' must be string");
+    }
+    return std::get<std::string>(it->second);
 }
 
 inline std::size_t compute_generations(const core::ParameterSet &params,
@@ -114,9 +126,9 @@ inline unsigned derive_seed(unsigned long seed, unsigned long salt);
 inline std::size_t read_fevals(const pagmo::population &population,
                                std::size_t fallback);
 inline void apply_budget_status(const core::Budget &budget,
-                                const core::BudgetUsage &usage,
-                                core::RunStatus &status,
-                                std::string &message);
+                                 const core::BudgetUsage &usage,
+                                 core::RunStatus &status,
+                                 std::string &message);
 
 template <typename AlgorithmBuilder>
 inline core::OptimizationResult run_population(
@@ -212,9 +224,7 @@ inline unsigned to_seed32(unsigned long seed) {
 
 // derive a different seed by mixing with a salt value
 inline unsigned derive_seed(unsigned long seed, unsigned long salt) {
-    std::mt19937 rng(to_seed32(seed));
-    for (unsigned long i = 0; i < salt; ++i)
-        rng.discard(1);
+    std::mt19937 rng(to_seed32(seed ^ (salt * 2654435761UL)));
     return rng();
 }
 

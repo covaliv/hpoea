@@ -69,7 +69,9 @@ inline void fill_hyper_result(core::HyperparameterOptimizationResult &result,
     result.budget_usage.generations = generations;
     result.budget_usage.function_evaluations = ctx.get_evaluations();
     result.effective_optimizer_parameters = optimizer_params;
-    result.message = "hyperparameter optimization completed";
+    if (result.status == core::RunStatus::Success) {
+        result.message = "hyperparameter optimization completed";
+    }
 }
 
 } // namespace hpoea::pagmo_wrappers
