@@ -65,9 +65,8 @@ std::string run_status_to_string(hpoea::core::RunStatus status) {
         return "invalid_configuration";
     case RunStatus::InternalError:
         return "internal_error";
-    default:
-        return "unknown";
     }
+    throw std::logic_error("unhandled RunStatus value");
 }
 
 std::string serialize_double(double value) {
@@ -130,31 +129,8 @@ std::string serialize_parameter_set(const hpoea::core::ParameterSet &parameters)
     return oss.str();
 }
 
-std::string serialize_optional_budget(const hpoea::core::Budget &budget) {
-    std::ostringstream oss;
-    oss << '{';
-    if (budget.function_evaluations.has_value()) {
-        oss << "\"function_evaluations\":" << *budget.function_evaluations;
-    } else {
-        oss << "\"function_evaluations\":null";
-    }
-    oss << ',';
-    if (budget.generations.has_value()) {
-        oss << "\"generations\":" << *budget.generations;
-    } else {
-        oss << "\"generations\":null";
-    }
-    oss << ',';
-    if (budget.wall_time.has_value()) {
-        oss << "\"wall_time_ms\":" << budget.wall_time->count();
-    } else {
-        oss << "\"wall_time_ms\":null";
-    }
-    oss << '}';
-    return oss.str();
-}
-
-std::string serialize_effective_budget(const hpoea::core::EffectiveBudget &budget) {
+template <typename BudgetType>
+std::string serialize_budget_fields(const BudgetType &budget) {
     std::ostringstream oss;
     oss << '{';
     if (budget.function_evaluations.has_value()) {
@@ -246,12 +222,12 @@ std::string serialize_run_record(const RunRecord &record) {
     oss << "\"optimizer_parameters\":" << serialize_parameter_set(record.optimizer_parameters) << ',';
     oss << "\"status\":\"" << escape_json(run_status_to_string(record.status)) << "\",";
     oss << "\"objective_value\":" << serialize_double(record.objective_value) << ',';
-    oss << "\"requested_budget\":" << serialize_optional_budget(record.requested_budget) << ',';
-    oss << "\"effective_budget\":" << serialize_effective_budget(record.effective_budget) << ',';
-    oss << "\"budget_usage\":{"
-        << "\"function_evaluations\":" << record.budget_usage.function_evaluations << ','
-        << "\"generations\":" << record.budget_usage.generations << ','
-        << "\"wall_time_ms\":" << record.budget_usage.wall_time.count() << "},";
+    oss << "\"requested_budget\":" << serialize_budget_fields(record.requested_budget) << ',';
+    oss << "\"effective_budget\":" << serialize_budget_fields(record.effective_budget) << ',';
+    oss << "\"algorithm_usage\":{"
+        << "\"function_evaluations\":" << record.algorithm_usage.function_evaluations << ','
+        << "\"generations\":" << record.algorithm_usage.generations << ','
+        << "\"wall_time_ms\":" << record.algorithm_usage.wall_time.count() << "},";
     oss << "\"error_info\":" << serialize_error_info(record.error_info) << ',';
     oss << "\"algorithm_seed\":" << record.algorithm_seed << ',';
     if (record.optimizer_seed.has_value()) {
@@ -265,4 +241,3 @@ std::string serialize_run_record(const RunRecord &record) {
 }
 
 } // namespace hpoea::core
-

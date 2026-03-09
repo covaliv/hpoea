@@ -2,7 +2,6 @@
 
 #include "hpoea/core/problem.hpp"
 
-#include <cmath>
 #include <vector>
 
 namespace hpoea::wrappers::problems {
@@ -91,7 +90,7 @@ private:
     std::vector<double> upper_bounds_{};
 };
 
-// griewank function with many local minima
+// griewank function, many local minima
 class GriewankProblem final : public core::IProblem {
 public:
     explicit GriewankProblem(std::size_t dimension, double lower_bound = -600.0, double upper_bound = 600.0);
@@ -113,7 +112,7 @@ private:
     std::vector<double> upper_bounds_{};
 };
 
-// schwefel function with many local minima
+// schwefel function, many local minima
 class SchwefelProblem final : public core::IProblem {
 public:
     explicit SchwefelProblem(std::size_t dimension, double lower_bound = -500.0, double upper_bound = 500.0);
@@ -200,6 +199,7 @@ private:
     std::vector<double> values_{};
     std::vector<double> weights_{};
     double capacity_{0.0};
+    double total_value_{0.0};
     std::vector<double> lower_bounds_{};
     std::vector<double> upper_bounds_{};
 };

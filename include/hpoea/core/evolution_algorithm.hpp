@@ -18,7 +18,7 @@ struct OptimizationResult {
     std::vector<double> best_solution;
     Budget requested_budget{};
     EffectiveBudget effective_budget{};
-    BudgetUsage budget_usage{};
+    AlgorithmRunUsage algorithm_usage{};
     std::optional<ErrorInfo> error_info{};
     ParameterSet effective_parameters{};
     unsigned long seed{0};
@@ -43,4 +43,3 @@ public:
 using EvolutionaryAlgorithmPtr = std::unique_ptr<IEvolutionaryAlgorithm>;
 
 } // namespace hpoea::core
-

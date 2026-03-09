@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <ranges>
 #include <stdexcept>
 
 namespace hpoea::core {
@@ -71,7 +72,7 @@ const ParameterConfig *SearchSpace::get(const std::string &name) const {
 }
 
 bool SearchSpace::has(const std::string &name) const {
-  return configs_.find(name) != configs_.end();
+  return configs_.contains(name);
 }
 
 const std::unordered_map<std::string, ParameterConfig> &
@@ -96,52 +97,8 @@ void SearchSpace::validate(const ParameterSpace &space) const {
                                      "' requires fixed_value");
     }
 
-    if (config.mode == SearchMode::fixed && config.fixed_value.has_value()) {
-      const auto &value = config.fixed_value.value();
-      if (descriptor.type == ParameterType::Continuous) {
-        if (!std::holds_alternative<double>(value)) {
-          throw ParameterValidationError("fixed value for '" + name +
-                                         "' must be double");
-        }
-        if (descriptor.continuous_range.has_value()) {
-          double v = std::get<double>(value);
-          if (v < descriptor.continuous_range->lower ||
-              v > descriptor.continuous_range->upper) {
-            throw ParameterValidationError("fixed value for '" + name +
-                                           "' outside valid range");
-          }
-        }
-      } else if (descriptor.type == ParameterType::Integer) {
-        if (!std::holds_alternative<std::int64_t>(value)) {
-          throw ParameterValidationError("fixed value for '" + name +
-                                         "' must be integer");
-        }
-        if (descriptor.integer_range.has_value()) {
-          auto v = std::get<std::int64_t>(value);
-          if (v < descriptor.integer_range->lower ||
-              v > descriptor.integer_range->upper) {
-            throw ParameterValidationError("fixed value for '" + name +
-                                           "' outside valid range");
-          }
-        }
-      } else if (descriptor.type == ParameterType::Boolean) {
-        if (!std::holds_alternative<bool>(value)) {
-          throw ParameterValidationError("fixed value for '" + name +
-                                         "' must be boolean");
-        }
-      } else if (descriptor.type == ParameterType::Categorical) {
-        if (!std::holds_alternative<std::string>(value)) {
-          throw ParameterValidationError("fixed value for '" + name +
-                                         "' must be string");
-        }
-        const auto &label = std::get<std::string>(value);
-        if (std::find(descriptor.categorical_choices.begin(),
-                      descriptor.categorical_choices.end(),
-                      label) == descriptor.categorical_choices.end()) {
-          throw ParameterValidationError("fixed value for '" + name +
-                                         "' is not a valid categorical choice");
-        }
-      }
+    if (config.mode == SearchMode::fixed) {
+      space.validate_value(descriptor, config.fixed_value.value());
     }
 
     if (config.mode == SearchMode::optimize && !config.discrete_choices.empty()) {
@@ -175,9 +132,8 @@ void SearchSpace::validate(const ParameterSpace &space) const {
                 "' must be categorical string values");
           }
           const auto &label = std::get<std::string>(choice);
-          if (std::find(descriptor.categorical_choices.begin(),
-                        descriptor.categorical_choices.end(),
-                        label) == descriptor.categorical_choices.end()) {
+          if (std::ranges::find(descriptor.categorical_choices, label) ==
+              descriptor.categorical_choices.end()) {
             throw ParameterValidationError(
                 "discrete choice for '" + name +
                 "' is not a valid categorical value");
@@ -275,22 +231,11 @@ SearchSpace::get_effective_bounds(const ParameterSpace &space) const {
 
 std::size_t
 SearchSpace::get_optimization_dimension(const ParameterSpace &space) const {
-  std::size_t dim = 0;
-
-  for (const auto &descriptor : space.descriptors()) {
-    const auto *config = get(descriptor.name);
-
-    if (config) {
-      if (config->mode == SearchMode::fixed ||
-          config->mode == SearchMode::exclude) {
-        continue;
-      }
-    }
-
-    ++dim;
-  }
-
-  return dim;
+  return static_cast<std::size_t>(std::ranges::count_if(
+      space.descriptors(), [this](const auto &descriptor) {
+        const auto *config = get(descriptor.name);
+        return !config || config->mode == SearchMode::optimize;
+      }));
 }
 
 void validate_transform_bounds(ContinuousRange bounds, Transform transform) {
@@ -340,7 +285,7 @@ double inverse_transform(double value, Transform transform) {
   case Transform::sqrt:
     return value * value;
   }
-  return value;
+  throw std::logic_error("unhandled transform");
 }
 
 ContinuousRange transform_bounds(ContinuousRange bounds, Transform transform) {
@@ -355,7 +300,7 @@ ContinuousRange transform_bounds(ContinuousRange bounds, Transform transform) {
   case Transform::sqrt:
     return {std::sqrt(bounds.lower), std::sqrt(bounds.upper)};
   }
-  return bounds;
+  throw std::logic_error("unhandled transform");
 }
 
 } // namespace hpoea::core

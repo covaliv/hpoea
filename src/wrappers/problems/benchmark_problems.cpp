@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <numbers>
+#include <numeric>
 #include <stdexcept>
 
 namespace {
@@ -174,7 +175,7 @@ double SchwefelProblem::evaluate(const std::vector<double> &decision_vector) con
     if (decision_vector.size() != dimension_) {
         throw std::runtime_error("Decision vector dimension mismatch");
     }
-    constexpr double alpha = 418.9828872724339; // constant for global minimum calculation
+    constexpr double alpha = 418.9828872724339; // constant for global minimum
     double sum = 0.0;
     
     for (const auto value : decision_vector) {
@@ -255,6 +256,7 @@ KnapsackProblem::KnapsackProblem(const std::vector<double> &values, const std::v
     values_ = values;
     weights_ = weights;
     capacity_ = capacity;
+    total_value_ = std::accumulate(values_.begin(), values_.end(), 0.0);
     lower_bounds_.assign(dimension_, 0.0);
     upper_bounds_.assign(dimension_, 1.0);
 }
@@ -275,7 +277,7 @@ double KnapsackProblem::evaluate(const std::vector<double> &decision_vector) con
         }
     }
     
-    constexpr double penalty_factor = 1000.0;
+    const double penalty_factor = std::max(1.0, total_value_);
     const double capacity_violation = std::max(0.0, total_weight - capacity_);
     const double penalty = penalty_factor * capacity_violation;
     
@@ -283,4 +285,3 @@ double KnapsackProblem::evaluate(const std::vector<double> &decision_vector) con
 }
 
 } // namespace hpoea::wrappers::problems
-

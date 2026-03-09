@@ -21,26 +21,30 @@ struct Budget {
     std::optional<std::chrono::milliseconds> wall_time;
 };
 
-struct BudgetUsage {
+// usage reported by a single ea run (inner data path).
+struct AlgorithmRunUsage {
     std::size_t function_evaluations{0};
     std::size_t generations{0};
     std::chrono::milliseconds wall_time{0};
 };
 
-struct EffectiveBudget {
-    std::optional<std::size_t> function_evaluations;
-    std::optional<std::size_t> generations;
-    std::optional<std::chrono::milliseconds> wall_time;
+// usage counters for the outer hyperparameter optimizer.
+struct OptimizerRunUsage {
+    std::size_t objective_calls{0};  // number of complete ea runs
+    std::size_t iterations{0};       // optimizer-side stepping
+    std::chrono::milliseconds wall_time{0};
 };
+
+using EffectiveBudget = Budget;
 
 [[nodiscard]] inline EffectiveBudget to_effective_budget(const Budget &budget,
                                                          std::optional<std::size_t> generations = std::nullopt,
                                                          std::optional<std::size_t> function_evaluations = std::nullopt,
                                                          std::optional<std::chrono::milliseconds> wall_time = std::nullopt) {
     EffectiveBudget out;
-    out.generations = generations.has_value() ? generations : budget.generations;
-    out.function_evaluations = function_evaluations.has_value() ? function_evaluations : budget.function_evaluations;
-    out.wall_time = wall_time.has_value() ? wall_time : budget.wall_time;
+    out.generations = generations ? generations : budget.generations;
+    out.function_evaluations = function_evaluations ? function_evaluations : budget.function_evaluations;
+    out.wall_time = wall_time ? wall_time : budget.wall_time;
     return out;
 }
 

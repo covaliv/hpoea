@@ -2,6 +2,7 @@
 
 #include "hpoea/core/hyperparameter_optimizer.hpp"
 #include "hpoea/core/logging.hpp"
+#include "hpoea/core/search_space.hpp"
 #include "hpoea/core/types.hpp"
 
 #include <filesystem>
@@ -63,4 +64,3 @@ private:
 };
 
 } // namespace hpoea::core
-

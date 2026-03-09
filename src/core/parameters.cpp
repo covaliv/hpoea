@@ -1,8 +1,10 @@
 #include "hpoea/core/parameters.hpp"
 
 #include <algorithm>
+#include <ranges>
 #include <cmath>
 #include <sstream>
+#include <stdexcept>
 
 namespace {
 
@@ -18,7 +20,7 @@ std::string parameter_type_to_string(hpoea::core::ParameterType type) {
     case ParameterType::Categorical:
         return "categorical";
     }
-    return "unknown";
+    throw std::logic_error("unhandled ParameterType value");
 }
 
 } // namespace
@@ -67,7 +69,7 @@ void ParameterSpace::add_descriptor(ParameterDescriptor descriptor) {
 }
 
 bool ParameterSpace::contains(const std::string &name) const noexcept {
-    return index_.find(name) != index_.end();
+    return index_.contains(name);
 }
 
 const ParameterDescriptor &ParameterSpace::descriptor(const std::string &name) const {
@@ -117,7 +119,7 @@ ParameterSet ParameterSpace::apply_defaults(const ParameterSet &overrides) const
 }
 
 void ParameterSpace::validate_value(const ParameterDescriptor &descriptor, const ParameterValue &value) const {
-    std::stringstream message;
+    std::ostringstream message;
     message << "parameter '" << descriptor.name << "' expects type " << parameter_type_to_string(descriptor.type);
 
     switch (descriptor.type) {
@@ -169,7 +171,7 @@ void ParameterSpace::validate_value(const ParameterDescriptor &descriptor, const
         }
         const auto &label = std::get<std::string>(value);
         const auto &choices = descriptor.categorical_choices;
-        const auto iter = std::find(choices.begin(), choices.end(), label);
+        const auto iter = std::ranges::find(choices, label);
         if (iter == choices.end()) {
             message << " with invalid choice '" << label << "'";
             throw ParameterValidationError(message.str());

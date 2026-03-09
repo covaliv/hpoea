@@ -43,8 +43,6 @@ struct EffectiveBounds {
 
 class SearchSpace {
 public:
-  SearchSpace() = default;
-
   void set(const std::string &name, ParameterConfig config);
   void fix(const std::string &name, ParameterValue value);
   void exclude(const std::string &name);

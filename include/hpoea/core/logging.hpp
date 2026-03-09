@@ -1,7 +1,5 @@
 #pragma once
 
-#include "hpoea/core/evolution_algorithm.hpp"
-#include "hpoea/core/hyperparameter_optimizer.hpp"
 #include "hpoea/core/parameters.hpp"
 #include "hpoea/core/types.hpp"
 
@@ -23,7 +21,7 @@ struct RunRecord {
     double objective_value{0.0};
     Budget requested_budget{};
     EffectiveBudget effective_budget{};
-    BudgetUsage budget_usage{};
+    AlgorithmRunUsage algorithm_usage{};
     std::optional<ErrorInfo> error_info{};
     unsigned long algorithm_seed{0};
     std::optional<unsigned long> optimizer_seed;
@@ -67,4 +65,3 @@ private:
 [[nodiscard]] std::string serialize_run_record(const RunRecord &record);
 
 } // namespace hpoea::core
-

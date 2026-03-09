@@ -6,6 +6,7 @@
 
 #include <limits>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace hpoea::core {
@@ -24,6 +25,7 @@ public:
 struct HyperparameterTrialRecord {
     ParameterSet parameters;
     OptimizationResult optimization_result;
+    std::size_t trial_index{0};
 };
 
 struct HyperparameterOptimizationResult {
@@ -31,7 +33,8 @@ struct HyperparameterOptimizationResult {
     ParameterSet best_parameters;
     double best_objective{std::numeric_limits<double>::infinity()};
     std::vector<HyperparameterTrialRecord> trials;
-    BudgetUsage budget_usage{};
+    OptimizerRunUsage optimizer_usage{};
+    std::optional<ErrorInfo> error_info;
     unsigned long seed{0};
     ParameterSet effective_optimizer_parameters;
     std::string message;
@@ -60,4 +63,3 @@ public:
 using HyperparameterOptimizerPtr = std::unique_ptr<IHyperparameterOptimizer>;
 
 } // namespace hpoea::core
-

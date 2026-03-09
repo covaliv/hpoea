@@ -47,8 +47,6 @@ public:
 
 class ParameterSpace {
 public:
-    ParameterSpace() = default;
-
     void add_descriptor(ParameterDescriptor descriptor);
 
     [[nodiscard]] bool contains(const std::string &name) const noexcept;
@@ -65,9 +63,9 @@ public:
 
     [[nodiscard]] ParameterSet apply_defaults(const ParameterSet &overrides) const;
 
-private:
     void validate_value(const ParameterDescriptor &descriptor, const ParameterValue &value) const;
 
+private:
     std::vector<ParameterDescriptor> descriptors_;
     std::unordered_map<std::string, std::size_t> index_;
 };
