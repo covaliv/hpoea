@@ -80,17 +80,7 @@ struct HyperparameterTuningProblem {
 
       switch (descriptor.type) {
       case core::ParameterType::Continuous: {
-        auto range = descriptor.continuous_range.value_or(
-            core::ContinuousRange{-1.0, 1.0});
-        core::Transform transform = core::Transform::none;
-
-        if (config) {
-          if (config->continuous_bounds.has_value()) {
-            range = config->continuous_bounds.value();
-          }
-          transform = config->transform;
-        }
-
+        auto [range, transform] = resolve_continuous(descriptor, config);
         const auto transformed = core::transform_bounds(range, transform);
         lower.push_back(transformed.lower);
         upper.push_back(transformed.upper);
@@ -99,16 +89,9 @@ struct HyperparameterTuningProblem {
       case core::ParameterType::Integer: {
         if (config && !config->discrete_choices.empty()) {
           lower.push_back(0.0);
-          upper.push_back(
-              static_cast<double>(config->discrete_choices.size() - 1));
+          upper.push_back(static_cast<double>(config->discrete_choices.size() - 1));
         } else {
-          auto range =
-              descriptor.integer_range.value_or(core::IntegerRange{-100, 100});
-
-          if (config && config->integer_bounds.has_value()) {
-            range = config->integer_bounds.value();
-          }
-
+          auto range = resolve_integer_range(descriptor, config);
           lower.push_back(static_cast<double>(range.lower));
           upper.push_back(static_cast<double>(range.upper));
         }
@@ -120,15 +103,11 @@ struct HyperparameterTuningProblem {
         break;
       }
       case core::ParameterType::Categorical: {
-        if (config && !config->discrete_choices.empty()) {
-          lower.push_back(0.0);
-          upper.push_back(
-              static_cast<double>(config->discrete_choices.size() - 1));
-        } else {
-          lower.push_back(0.0);
-          upper.push_back(
-              static_cast<double>(descriptor.categorical_choices.size() - 1));
-        }
+        const auto count = (config && !config->discrete_choices.empty())
+            ? config->discrete_choices.size()
+            : descriptor.categorical_choices.size();
+        lower.push_back(0.0);
+        upper.push_back(static_cast<double>(count - 1));
         break;
       }
       }
@@ -183,72 +162,22 @@ struct HyperparameterTuningProblem {
       const auto value = candidate[candidate_index++];
 
       switch (descriptor.type) {
-      case core::ParameterType::Continuous: {
-        auto range = descriptor.continuous_range.value_or(
-            core::ContinuousRange{-1e10, 1e10});
-        core::Transform transform = core::Transform::none;
-
-        if (config) {
-          if (config->continuous_bounds.has_value()) {
-            range = config->continuous_bounds.value();
-          }
-          transform = config->transform;
-        }
-
-        double numeric = core::inverse_transform(value, transform);
-        numeric = std::clamp(numeric, range.lower, range.upper);
-        parameters.emplace(descriptor.name, numeric);
+      case core::ParameterType::Continuous:
+        parameters.emplace(descriptor.name, decode_continuous(value, descriptor, config));
         break;
-      }
-      case core::ParameterType::Integer: {
-        if (config && !config->discrete_choices.empty()) {
-          const auto &choices = config->discrete_choices;
-          auto index_value = static_cast<std::size_t>(
-              std::clamp<std::int64_t>(std::llround(value), 0,
-                                       static_cast<std::int64_t>(choices.size() - 1)));
-          parameters.emplace(descriptor.name, choices[index_value]);
-        } else {
-          auto range =
-              descriptor.integer_range.value_or(core::IntegerRange{-100, 100});
-
-          if (config && config->integer_bounds.has_value()) {
-            range = config->integer_bounds.value();
-          }
-
-          auto rounded = static_cast<std::int64_t>(std::llround(value));
-          rounded = std::clamp(rounded, range.lower, range.upper);
-          parameters.emplace(descriptor.name, rounded);
-        }
+      case core::ParameterType::Integer:
+        parameters.emplace(descriptor.name, decode_integer(value, descriptor, config));
         break;
-      }
-      case core::ParameterType::Boolean: {
+      case core::ParameterType::Boolean:
         parameters.emplace(descriptor.name, value > 0.5);
         break;
-      }
-      case core::ParameterType::Categorical: {
-        if (config && !config->discrete_choices.empty()) {
-          const auto &choices = config->discrete_choices;
-          auto index_value = static_cast<std::size_t>(
-              std::clamp<std::int64_t>(std::llround(value), 0,
-                                       static_cast<std::int64_t>(choices.size() - 1)));
-          parameters.emplace(descriptor.name, choices[index_value]);
-        } else {
-          const auto &choices = descriptor.categorical_choices;
-          if (choices.empty()) {
-            throw core::ParameterValidationError(
-                "Categorical descriptor without choices: " + descriptor.name);
-          }
-          auto index_value = static_cast<std::size_t>(
-              std::clamp<std::int64_t>(std::llround(value), 0,
-                                       static_cast<std::int64_t>(choices.size() - 1)));
-          parameters.emplace(descriptor.name, choices[index_value]);
-        }
+      case core::ParameterType::Categorical:
+        parameters.emplace(descriptor.name, decode_categorical(value, descriptor, config));
         break;
-      }
       }
     }
 
-    // apply defaults only for non-excluded parameters
+    // apply defaults only for non-excluded parameters.
     for (const auto &desc : descriptors) {
       if (parameters.contains(desc.name)) continue;
       const core::ParameterConfig *pc = nullptr;
@@ -306,25 +235,93 @@ struct HyperparameterTuningProblem {
   [[nodiscard]] std::string get_name() const { return "HyperparameterTuningProblem"; }
 
 private:
+  struct ResolvedContinuous {
+    core::ContinuousRange range;
+    core::Transform transform;
+  };
+
+  [[nodiscard]] static ResolvedContinuous resolve_continuous(
+      const core::ParameterDescriptor &desc,
+      const core::ParameterConfig *config) {
+    if (!desc.continuous_range.has_value()) {
+      throw std::logic_error("continuous parameter missing range: " + desc.name);
+    }
+    auto range = *desc.continuous_range;
+    auto transform = core::Transform::none;
+    if (config) {
+      if (config->continuous_bounds.has_value()) {
+        range = config->continuous_bounds.value();
+      }
+      transform = config->transform;
+    }
+    return {range, transform};
+  }
+
+  [[nodiscard]] static core::IntegerRange resolve_integer_range(
+      const core::ParameterDescriptor &desc,
+      const core::ParameterConfig *config) {
+    if (!desc.integer_range.has_value()) {
+      throw std::logic_error("integer parameter missing range: " + desc.name);
+    }
+    auto range = *desc.integer_range;
+    if (config && config->integer_bounds.has_value()) {
+      range = config->integer_bounds.value();
+    }
+    return range;
+  }
+
+  [[nodiscard]] static core::ParameterValue decode_discrete_choice(
+      double value, const std::vector<core::ParameterValue> &choices) {
+    auto index = static_cast<std::size_t>(
+        std::clamp<std::int64_t>(std::llround(value), 0,
+                                 static_cast<std::int64_t>(choices.size() - 1)));
+    return choices[index];
+  }
+
+  [[nodiscard]] static core::ParameterValue decode_continuous(
+      double value, const core::ParameterDescriptor &desc,
+      const core::ParameterConfig *config) {
+    auto [range, transform] = resolve_continuous(desc, config);
+    double numeric = core::inverse_transform(value, transform);
+    return std::clamp(numeric, range.lower, range.upper);
+  }
+
+  [[nodiscard]] static core::ParameterValue decode_integer(
+      double value, const core::ParameterDescriptor &desc,
+      const core::ParameterConfig *config) {
+    if (config && !config->discrete_choices.empty()) {
+      return decode_discrete_choice(value, config->discrete_choices);
+    }
+    auto range = resolve_integer_range(desc, config);
+    auto rounded = static_cast<std::int64_t>(std::llround(value));
+    return std::clamp(rounded, range.lower, range.upper);
+  }
+
+  [[nodiscard]] static core::ParameterValue decode_categorical(
+      double value, const core::ParameterDescriptor &desc,
+      const core::ParameterConfig *config) {
+    if (config && !config->discrete_choices.empty()) {
+      return decode_discrete_choice(value, config->discrete_choices);
+    }
+    const auto &choices = desc.categorical_choices;
+    if (choices.empty()) {
+      throw core::ParameterValidationError(
+          "Categorical descriptor without choices: " + desc.name);
+    }
+    auto index = static_cast<std::size_t>(
+        std::clamp<std::int64_t>(std::llround(value), 0,
+                                 static_cast<std::int64_t>(choices.size() - 1)));
+    return std::string{choices[index]};
+  }
+
   [[nodiscard]] static std::size_t compute_candidate_dimension(
       const Context &ctx,
       const std::vector<core::ParameterDescriptor> &descriptors) {
-    std::size_t dim = 0;
-    for (const auto &descriptor : descriptors) {
-      const core::ParameterConfig *config = nullptr;
-      if (ctx.search_space) {
-        config = ctx.search_space->get(descriptor.name);
-      }
-
-      if (config &&
-          (config->mode == core::SearchMode::fixed ||
-           config->mode == core::SearchMode::exclude)) {
-        continue;
-      }
-
-      ++dim;
+    if (ctx.search_space) {
+      return ctx.search_space->get_optimization_dimension(
+          ctx.factory->parameter_space());
     }
-    return dim;
+    return descriptors.size();
   }
 
   [[nodiscard]] const Context &ensure_context() const {

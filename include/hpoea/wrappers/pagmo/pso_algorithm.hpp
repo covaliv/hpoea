@@ -1,59 +1,25 @@
 #pragma once
 
-#include "hpoea/core/evolution_algorithm.hpp"
-#include "hpoea/core/hyperparameter_optimizer.hpp"
-#include "hpoea/core/parameters.hpp"
-#include "hpoea/core/types.hpp"
-
-#include <memory>
+#include "hpoea/wrappers/pagmo/algorithm_base.hpp"
 
 namespace hpoea::pagmo_wrappers {
 
-class PagmoParticleSwarmOptimization final : public core::IEvolutionaryAlgorithm {
+class PagmoParticleSwarmOptimization final : public PagmoAlgorithmBase {
 public:
     PagmoParticleSwarmOptimization();
-
-    PagmoParticleSwarmOptimization(const PagmoParticleSwarmOptimization &other);
-
-    PagmoParticleSwarmOptimization &operator=(const PagmoParticleSwarmOptimization &other);
-
-    PagmoParticleSwarmOptimization(PagmoParticleSwarmOptimization &&) noexcept = default;
-    PagmoParticleSwarmOptimization &operator=(PagmoParticleSwarmOptimization &&) noexcept = default;
-
-    ~PagmoParticleSwarmOptimization() override = default;
-
-    [[nodiscard]] const core::AlgorithmIdentity &identity() const noexcept override { return identity_; }
-
-    [[nodiscard]] const core::ParameterSpace &parameter_space() const noexcept override { return parameter_space_; }
-
-    void configure(const core::ParameterSet &parameters) override;
 
     [[nodiscard]] core::OptimizationResult run(const core::IProblem &problem,
                                                const core::Budget &budget,
                                                unsigned long seed) override;
 
     [[nodiscard]] std::unique_ptr<core::IEvolutionaryAlgorithm> clone() const override;
-
-private:
-    core::ParameterSpace parameter_space_;
-    core::ParameterSet configured_parameters_;
-    core::AlgorithmIdentity identity_{};
 };
 
-class PagmoParticleSwarmOptimizationFactory final : public core::IEvolutionaryAlgorithmFactory {
+class PagmoParticleSwarmOptimizationFactory final : public PagmoAlgorithmFactoryBase {
 public:
     PagmoParticleSwarmOptimizationFactory();
 
     [[nodiscard]] core::EvolutionaryAlgorithmPtr create() const override;
-
-    [[nodiscard]] const core::ParameterSpace &parameter_space() const noexcept override { return parameter_space_; }
-
-    [[nodiscard]] const core::AlgorithmIdentity &identity() const noexcept override { return identity_; }
-
-private:
-    core::ParameterSpace parameter_space_;
-    core::AlgorithmIdentity identity_{};
 };
 
 } // namespace hpoea::pagmo_wrappers
-

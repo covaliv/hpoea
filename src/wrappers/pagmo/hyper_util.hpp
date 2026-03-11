@@ -2,7 +2,9 @@
 
 #include "hyper_tuning_udp.hpp"
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <pagmo/population.hpp>
@@ -34,13 +36,27 @@ make_hyper_context(const core::IEvolutionaryAlgorithmFactory &factory,
     return ctx;
 }
 
-inline void fill_hyper_result(core::HyperparameterOptimizationResult &result,
-                              HyperparameterTuningProblem::Context &ctx,
-                              const pagmo::population &population,
-                              std::size_t generations,
-                              std::chrono::steady_clock::time_point start,
-                              std::chrono::steady_clock::time_point end,
-                              const core::ParameterSet &optimizer_params) {
+// nan-safe comparator for trial records.
+// treats non-finite fitness values as worse than any finite value.
+inline auto nan_safe_trial_comparator() {
+    return [](const core::HyperparameterTrialRecord &a,
+              const core::HyperparameterTrialRecord &b) {
+        const auto fa = a.optimization_result.best_fitness;
+        const auto fb = b.optimization_result.best_fitness;
+        if (!std::isfinite(fa)) return false;
+        if (!std::isfinite(fb)) return true;
+        return fa < fb;
+    };
+}
+
+inline core::HyperparameterOptimizationResult fill_hyper_result(
+    HyperparameterTuningProblem::Context &ctx,
+    const pagmo::population &population,
+    std::size_t generations,
+    std::chrono::steady_clock::time_point start,
+    std::chrono::steady_clock::time_point end,
+    const core::ParameterSet &optimizer_params) {
+    core::HyperparameterOptimizationResult result;
     result.status = core::RunStatus::Success;
 
     if (ctx.trials) {
@@ -52,11 +68,16 @@ inline void fill_hyper_result(core::HyperparameterOptimizationResult &result,
         result.best_objective = best->optimization_result.best_fitness;
     } else if (!result.trials.empty()) {
         auto it = std::min_element(result.trials.begin(), result.trials.end(),
-            [](const auto &a, const auto &b) {
-                return a.optimization_result.best_fitness < b.optimization_result.best_fitness;
-            });
-        result.best_parameters = it->parameters;
-        result.best_objective = it->optimization_result.best_fitness;
+            nan_safe_trial_comparator());
+        if (it != result.trials.end() && std::isfinite(it->optimization_result.best_fitness)) {
+            result.best_parameters = it->parameters;
+            result.best_objective = it->optimization_result.best_fitness;
+        } else {
+            result.status = core::RunStatus::InternalError;
+            result.message = "no valid hyperparameter trial was recorded";
+            const auto &f = population.champion_f();
+            result.best_objective = f.empty() ? std::numeric_limits<double>::max() : f[0];
+        }
     } else {
         result.status = core::RunStatus::InternalError;
         result.message = "no valid hyperparameter trial was recorded";
@@ -64,14 +85,98 @@ inline void fill_hyper_result(core::HyperparameterOptimizationResult &result,
         result.best_objective = f.empty() ? std::numeric_limits<double>::max() : f[0];
     }
 
-    result.budget_usage.wall_time =
+    result.optimizer_usage.wall_time =
         std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    result.budget_usage.generations = generations;
-    result.budget_usage.function_evaluations = ctx.get_evaluations();
+    result.optimizer_usage.iterations = generations;
+    result.optimizer_usage.objective_calls = ctx.get_evaluations();
     result.effective_optimizer_parameters = optimizer_params;
     if (result.status == core::RunStatus::Success) {
         result.message = "hyperparameter optimization completed";
     }
+    return result;
+}
+
+// main entry point for running a hyper-optimization loop.
+//
+// AlgorithmSetup is a callable:
+//   (pagmo::problem &tuning_problem, const std::pair<pagmo::vector_double, pagmo::vector_double> &bounds,
+//    const core::Budget &optimizer_budget, std::chrono::steady_clock::time_point start,
+//    HyperparameterTuningProblem::Context &ctx)
+//   -> std::pair<pagmo::population, std::size_t>
+//
+// it should create/evolve a population and return it along with actual_iterations.
+template <typename AlgorithmSetup>
+core::HyperparameterOptimizationResult run_hyper_optimization(
+    const core::IEvolutionaryAlgorithmFactory &algorithm_factory,
+    const core::IProblem &problem,
+    const core::Budget &optimizer_budget,
+    const core::Budget &algorithm_budget,
+    unsigned long seed,
+    const core::ParameterSet &configured_parameters,
+    const std::shared_ptr<core::SearchSpace> &search_space,
+    AlgorithmSetup &&setup) {
+
+    core::HyperparameterOptimizationResult result;
+    result.status = core::RunStatus::InternalError;
+    result.seed = seed;
+
+    std::shared_ptr<HyperparameterTuningProblem::Context> ctx;
+    const auto start_time = std::chrono::steady_clock::now();
+
+    try {
+        if (search_space) {
+            search_space->validate(algorithm_factory.parameter_space());
+        }
+
+        ctx = make_hyper_context(algorithm_factory, problem, algorithm_budget, seed, search_space);
+        HyperparameterTuningProblem udp{ctx};
+
+        const auto bounds = udp.get_bounds();
+        pagmo::problem tuning_problem{udp};
+
+        auto [population, actual_iterations] =
+            setup(tuning_problem, bounds, optimizer_budget, start_time, *ctx);
+
+        const auto end_time = std::chrono::steady_clock::now();
+
+        result = fill_hyper_result(*ctx, population, actual_iterations,
+                                   start_time, end_time, configured_parameters);
+        result.seed = seed;
+        apply_optimizer_budget_status(
+            optimizer_budget,
+            result.optimizer_usage,
+            result.status,
+            result.message);
+    } catch (const std::exception &ex) {
+        const auto end_time = std::chrono::steady_clock::now();
+        result.optimizer_usage.wall_time =
+            std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        result.message = ex.what();
+
+        if (dynamic_cast<const core::ParameterValidationError *>(&ex)) {
+            result.status = core::RunStatus::InvalidConfiguration;
+            result.error_info = core::ErrorInfo{"invalid_configuration", "parameter_validation", ex.what()};
+        } else if (dynamic_cast<const std::invalid_argument *>(&ex)) {
+            result.status = core::RunStatus::InvalidConfiguration;
+            result.error_info = core::ErrorInfo{"invalid_configuration", "invalid_argument", ex.what()};
+        } else {
+            result.status = core::RunStatus::InternalError;
+            result.error_info = core::ErrorInfo{"internal_error", "exception", ex.what()};
+        }
+    }
+
+    // fallback: if we have trials from before the exception, recover the best one
+    if (ctx && ctx->trials && !ctx->trials->empty() && result.trials.empty()) {
+        result.trials = std::move(*ctx->trials);
+        auto it = std::min_element(result.trials.begin(), result.trials.end(),
+            nan_safe_trial_comparator());
+        if (it != result.trials.end() && std::isfinite(it->optimization_result.best_fitness)) {
+            result.best_parameters = it->parameters;
+            result.best_objective = it->optimization_result.best_fitness;
+        }
+    }
+
+    return result;
 }
 
 } // namespace hpoea::pagmo_wrappers

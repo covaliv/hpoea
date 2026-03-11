@@ -1,15 +1,11 @@
 #include "hpoea/wrappers/pagmo/nm_hyper.hpp"
 
 #include "budget_util.hpp"
-#include "hyper_tuning_udp.hpp"
 #include "hyper_util.hpp"
 
 #include <algorithm>
-#include <chrono>
-#include <pagmo/algorithm.hpp>
+#include <limits>
 #include <pagmo/algorithms/nlopt.hpp>
-#include <pagmo/population.hpp>
-#include <pagmo/problem.hpp>
 
 namespace {
 
@@ -54,22 +50,10 @@ AlgorithmIdentity make_identity() {
 namespace hpoea::pagmo_wrappers {
 
 PagmoNelderMeadHyperOptimizer::PagmoNelderMeadHyperOptimizer()
-    : parameter_space_(make_parameter_space()),
-      configured_parameters_(parameter_space_.apply_defaults({})),
-      identity_(make_identity()) {}
+    : PagmoHyperOptimizerBase(make_parameter_space(), make_identity()) {}
 
 core::HyperparameterOptimizerPtr PagmoNelderMeadHyperOptimizer::clone() const {
     return std::make_unique<PagmoNelderMeadHyperOptimizer>(*this);
-}
-
-void PagmoNelderMeadHyperOptimizer::configure(const core::ParameterSet &parameters) {
-    configured_parameters_ = parameter_space_.apply_defaults(parameters);
-    parameter_space_.validate(configured_parameters_);
-}
-
-void PagmoNelderMeadHyperOptimizer::set_search_space(
-    std::shared_ptr<core::SearchSpace> search_space) {
-    search_space_ = std::move(search_space);
 }
 
 core::HyperparameterOptimizationResult PagmoNelderMeadHyperOptimizer::optimize(
@@ -79,87 +63,49 @@ core::HyperparameterOptimizationResult PagmoNelderMeadHyperOptimizer::optimize(
     const core::Budget &algorithm_budget,
     unsigned long seed) {
 
-    core::HyperparameterOptimizationResult result;
-    result.status = core::RunStatus::InternalError;
-    result.seed = seed;
+    return run_hyper_optimization(
+        algorithm_factory, problem, optimizer_budget, algorithm_budget,
+        seed, configured_parameters_, search_space_,
+        [&](pagmo::problem &tuning_problem,
+            const auto &bounds,
+            const core::Budget &budget,
+            std::chrono::steady_clock::time_point start,
+            HyperparameterTuningProblem::Context &) -> std::pair<pagmo::population, std::size_t> {
 
-    std::shared_ptr<HyperparameterTuningProblem::Context> ctx;
-    const auto start_time = std::chrono::steady_clock::now();
+            const auto dim = bounds.first.size();
+            const auto pop_size = static_cast<pagmo::population::size_type>(dim + 1);
 
-    try {
-        if (search_space_) {
-            search_space_->validate(algorithm_factory.parameter_space());
-        }
+            auto max_fevals = static_cast<std::size_t>(
+                std::get<std::int64_t>(configured_parameters_.at("max_fevals")));
+            if (budget.function_evaluations) {
+                auto available = *budget.function_evaluations > static_cast<std::size_t>(pop_size)
+                    ? *budget.function_evaluations - static_cast<std::size_t>(pop_size)
+                    : std::size_t{0};
+                max_fevals = std::min(max_fevals, available);
+            }
 
-        ctx = make_hyper_context(algorithm_factory, problem, algorithm_budget, seed, search_space_);
-        HyperparameterTuningProblem udp{ctx};
+            // saturate to int for nlopt's set_maxeval
+            constexpr auto int_max = static_cast<std::size_t>(std::numeric_limits<int>::max());
+            const auto max_fevals_int = static_cast<int>(std::min(max_fevals, int_max));
 
-        const auto bounds = udp.get_bounds();
-        pagmo::problem tuning_problem{udp};
+            const auto xtol_rel = std::get<double>(configured_parameters_.at("xtol_rel"));
+            const auto ftol_rel = std::get<double>(configured_parameters_.at("ftol_rel"));
 
-        auto max_fevals = static_cast<unsigned>(
-            std::get<std::int64_t>(configured_parameters_.at("max_fevals")));
-        if (optimizer_budget.function_evaluations)
-            max_fevals = std::min<unsigned>(max_fevals, static_cast<unsigned>(*optimizer_budget.function_evaluations));
+            pagmo::nlopt nm_alg("neldermead");
+            nm_alg.set_maxeval(max_fevals_int);
+            nm_alg.set_xtol_rel(xtol_rel);
+            nm_alg.set_ftol_rel(ftol_rel);
+            pagmo::algorithm algorithm{nm_alg};
+            pagmo::population population{tuning_problem, pop_size, derive_seed(seed, 1)};
 
-        const auto xtol_rel = std::get<double>(configured_parameters_.at("xtol_rel"));
-        const auto ftol_rel = std::get<double>(configured_parameters_.at("ftol_rel"));
+            const bool skip_evolve = budget.generations.has_value() && *budget.generations == 0;
+            if (!skip_evolve) {
+                population = algorithm.evolve(population);
+            }
 
-        pagmo::nlopt nm_alg("neldermead");
-        nm_alg.set_maxeval(static_cast<int>(max_fevals));
-        nm_alg.set_xtol_rel(xtol_rel);
-        nm_alg.set_ftol_rel(ftol_rel);
-        pagmo::algorithm algorithm{nm_alg};
-
-        const auto dim = bounds.first.size();
-        const auto pop_size = static_cast<pagmo::population::size_type>(dim + 1);
-        const auto t0 = start_time;
-        pagmo::population population{tuning_problem, pop_size, derive_seed(seed, 1)};
-
-        const bool skip_evolve = optimizer_budget.generations.has_value() && *optimizer_budget.generations == 0;
-        if (!skip_evolve) {
-            population = algorithm.evolve(population);
-        }
-        const auto t1 = std::chrono::steady_clock::now();
-
-        const auto actual_generations = skip_evolve ? 0u : 1u;
-        fill_hyper_result(result, *ctx, population, actual_generations, t0, t1, configured_parameters_);
-        apply_budget_status(
-            optimizer_budget,
-            result.budget_usage,
-            result.status,
-            result.message);
-    } catch (const core::ParameterValidationError &ex) {
-        const auto end_time = std::chrono::steady_clock::now();
-        result.budget_usage.wall_time =
-            std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        result.status = core::RunStatus::InvalidConfiguration;
-        result.message = ex.what();
-    } catch (const std::invalid_argument &ex) {
-        const auto end_time = std::chrono::steady_clock::now();
-        result.budget_usage.wall_time =
-            std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        result.status = core::RunStatus::InvalidConfiguration;
-        result.message = ex.what();
-    } catch (const std::exception &ex) {
-        const auto end_time = std::chrono::steady_clock::now();
-        result.budget_usage.wall_time =
-            std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        result.status = core::RunStatus::InternalError;
-        result.message = ex.what();
-    }
-
-    if (ctx && ctx->trials && !ctx->trials->empty() && result.trials.empty()) {
-        result.trials = std::move(*ctx->trials);
-        auto it = std::min_element(result.trials.begin(), result.trials.end(),
-            [](const auto &a, const auto &b) {
-                return a.optimization_result.best_fitness < b.optimization_result.best_fitness;
-            });
-        result.best_parameters = it->parameters;
-        result.best_objective = it->optimization_result.best_fitness;
-    }
-
-    return result;
+            const auto actual_generations = skip_evolve ? std::size_t{0} : std::size_t{1};
+            return {std::move(population), actual_generations};
+        });
 }
 
 } // namespace hpoea::pagmo_wrappers

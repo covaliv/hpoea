@@ -3,16 +3,12 @@
 #include "budget_util.hpp"
 #include "problem_adapter.hpp"
 
-#include <chrono>
 #include <pagmo/algorithm.hpp>
 #include <pagmo/algorithms/pso.hpp>
-#include <pagmo/population.hpp>
-#include <pagmo/problem.hpp>
 
 namespace {
 
 using hpoea::core::AlgorithmIdentity;
-using hpoea::core::OptimizationResult;
 using hpoea::core::ParameterDescriptor;
 using hpoea::core::ParameterSpace;
 using hpoea::core::ParameterType;
@@ -20,15 +16,9 @@ using hpoea::core::ParameterType;
 ParameterSpace make_parameter_space() {
     ParameterSpace space;
 
-    ParameterDescriptor d;
-    d.name = "population_size";
-    d.type = ParameterType::Integer;
-    d.integer_range = hpoea::core::IntegerRange{5, 5000};
-    d.default_value = std::int64_t{50};
-    d.required = true;
-    space.add_descriptor(d);
+    space.add_descriptor(hpoea::pagmo_wrappers::make_population_size_descriptor(50, {5, 2000}));
 
-    d = {};
+    ParameterDescriptor d;
     d.name = "omega";
     d.type = ParameterType::Continuous;
     d.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
@@ -63,12 +53,7 @@ ParameterSpace make_parameter_space() {
     d.default_value = std::int64_t{5};
     space.add_descriptor(d);
 
-    d = {};
-    d.name = "generations";
-    d.type = ParameterType::Integer;
-    d.integer_range = hpoea::core::IntegerRange{1, 1000};
-    d.default_value = std::int64_t{100};
-    space.add_descriptor(d);
+    space.add_descriptor(hpoea::pagmo_wrappers::make_generations_descriptor());
 
     return space;
 }
@@ -82,27 +67,16 @@ AlgorithmIdentity make_identity() {
 namespace hpoea::pagmo_wrappers {
 
 PagmoParticleSwarmOptimization::PagmoParticleSwarmOptimization()
-    : parameter_space_(make_parameter_space()),
-      configured_parameters_(parameter_space_.apply_defaults({})),
-      identity_(make_identity()) {}
+    : PagmoAlgorithmBase(make_parameter_space(), make_identity()) {}
 
-PagmoParticleSwarmOptimization::PagmoParticleSwarmOptimization(const PagmoParticleSwarmOptimization &other) = default;
-
-PagmoParticleSwarmOptimization &PagmoParticleSwarmOptimization::operator=(const PagmoParticleSwarmOptimization &other) = default;
-
-void PagmoParticleSwarmOptimization::configure(const core::ParameterSet &parameters) {
-    configured_parameters_ = parameter_space_.apply_defaults(parameters);
-    parameter_space_.validate(configured_parameters_);
-}
-
-OptimizationResult PagmoParticleSwarmOptimization::run(const core::IProblem &problem,
-                                                       const core::Budget &budget,
-                                                       unsigned long seed) {
-    const auto omega = get_double_param(configured_parameters_, "omega");
-    const auto eta1 = get_double_param(configured_parameters_, "eta1");
-    const auto eta2 = get_double_param(configured_parameters_, "eta2");
-    const auto max_velocity = get_double_param(configured_parameters_, "max_velocity");
-    const auto variant = static_cast<unsigned>(get_int_param(configured_parameters_, "variant"));
+core::OptimizationResult PagmoParticleSwarmOptimization::run(const core::IProblem &problem,
+                                                             const core::Budget &budget,
+                                                             unsigned long seed) {
+    const auto omega = get_param<double>(configured_parameters_, "omega");
+    const auto eta1 = get_param<double>(configured_parameters_, "eta1");
+    const auto eta2 = get_param<double>(configured_parameters_, "eta2");
+    const auto max_velocity = get_param<double>(configured_parameters_, "max_velocity");
+    const auto variant = static_cast<unsigned>(get_param<std::int64_t>(configured_parameters_, "variant"));
 
     return run_population(
         problem,
@@ -121,8 +95,7 @@ std::unique_ptr<core::IEvolutionaryAlgorithm> PagmoParticleSwarmOptimization::cl
 }
 
 PagmoParticleSwarmOptimizationFactory::PagmoParticleSwarmOptimizationFactory()
-    : parameter_space_(make_parameter_space()),
-      identity_(make_identity()) {}
+    : PagmoAlgorithmFactoryBase(make_parameter_space(), make_identity()) {}
 
 core::EvolutionaryAlgorithmPtr PagmoParticleSwarmOptimizationFactory::create() const {
     return std::make_unique<PagmoParticleSwarmOptimization>();

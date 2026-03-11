@@ -1,25 +1,14 @@
 #pragma once
 
-#include "hpoea/core/hyperparameter_optimizer.hpp"
-#include "hpoea/core/search_space.hpp"
-
-#include <memory>
+#include "hpoea/wrappers/pagmo/hyper_optimizer_base.hpp"
 
 namespace hpoea::pagmo_wrappers {
 
-class PagmoSimulatedAnnealingHyperOptimizer final : public core::IHyperparameterOptimizer {
+class PagmoSimulatedAnnealingHyperOptimizer final : public PagmoHyperOptimizerBase {
 public:
     PagmoSimulatedAnnealingHyperOptimizer();
 
-    [[nodiscard]] const core::AlgorithmIdentity &identity() const noexcept override { return identity_; }
-
-    [[nodiscard]] const core::ParameterSpace &parameter_space() const noexcept override { return parameter_space_; }
-
     [[nodiscard]] core::HyperparameterOptimizerPtr clone() const override;
-
-    void configure(const core::ParameterSet &parameters) override;
-
-    void set_search_space(std::shared_ptr<core::SearchSpace> search_space);
 
     [[nodiscard]] core::HyperparameterOptimizationResult optimize(
         const core::IEvolutionaryAlgorithmFactory &algorithm_factory,
@@ -27,13 +16,6 @@ public:
         const core::Budget &optimizer_budget,
         const core::Budget &algorithm_budget,
         unsigned long seed) override;
-
-private:
-    core::ParameterSpace parameter_space_;
-    core::ParameterSet configured_parameters_;
-    core::AlgorithmIdentity identity_{};
-    std::shared_ptr<core::SearchSpace> search_space_;
 };
 
 } // namespace hpoea::pagmo_wrappers
-

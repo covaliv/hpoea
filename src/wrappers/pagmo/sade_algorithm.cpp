@@ -3,16 +3,12 @@
 #include "budget_util.hpp"
 #include "problem_adapter.hpp"
 
-#include <chrono>
 #include <pagmo/algorithm.hpp>
 #include <pagmo/algorithms/sade.hpp>
-#include <pagmo/population.hpp>
-#include <pagmo/problem.hpp>
 
 namespace {
 
 using hpoea::core::AlgorithmIdentity;
-using hpoea::core::OptimizationResult;
 using hpoea::core::ParameterDescriptor;
 using hpoea::core::ParameterSpace;
 using hpoea::core::ParameterType;
@@ -24,22 +20,10 @@ using hpoea::core::ParameterType;
 ParameterSpace make_parameter_space() {
     ParameterSpace space;
 
+    space.add_descriptor(hpoea::pagmo_wrappers::make_population_size_descriptor(50, {5, 2000}));
+    space.add_descriptor(hpoea::pagmo_wrappers::make_generations_descriptor());
+
     ParameterDescriptor d;
-    d.name = "population_size";
-    d.type = ParameterType::Integer;
-    d.integer_range = hpoea::core::IntegerRange{5, 5000};
-    d.default_value = std::int64_t{50};
-    d.required = true;
-    space.add_descriptor(d);
-
-    d = {};
-    d.name = "generations";
-    d.type = ParameterType::Integer;
-    d.integer_range = hpoea::core::IntegerRange{1, 1000};
-    d.default_value = std::int64_t{100};
-    space.add_descriptor(d);
-
-    d = {};
     d.name = "variant";
     d.type = ParameterType::Integer;
     d.integer_range = hpoea::core::IntegerRange{1, 18};
@@ -53,19 +37,8 @@ ParameterSpace make_parameter_space() {
     d.default_value = std::int64_t{1};
     space.add_descriptor(d);
 
-    d = {};
-    d.name = "ftol";
-    d.type = ParameterType::Continuous;
-    d.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
-    d.default_value = 1e-6;
-    space.add_descriptor(d);
-
-    d = {};
-    d.name = "xtol";
-    d.type = ParameterType::Continuous;
-    d.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
-    d.default_value = 1e-6;
-    space.add_descriptor(d);
+    space.add_descriptor(hpoea::pagmo_wrappers::make_ftol_descriptor());
+    space.add_descriptor(hpoea::pagmo_wrappers::make_xtol_descriptor());
 
     d = {};
     d.name = "memory";
@@ -85,27 +58,16 @@ AlgorithmIdentity make_identity() {
 namespace hpoea::pagmo_wrappers {
 
 PagmoSelfAdaptiveDE::PagmoSelfAdaptiveDE()
-    : parameter_space_(make_parameter_space()),
-      configured_parameters_(parameter_space_.apply_defaults({})),
-      identity_(make_identity()) {}
+    : PagmoAlgorithmBase(make_parameter_space(), make_identity()) {}
 
-PagmoSelfAdaptiveDE::PagmoSelfAdaptiveDE(const PagmoSelfAdaptiveDE &other) = default;
-
-PagmoSelfAdaptiveDE &PagmoSelfAdaptiveDE::operator=(const PagmoSelfAdaptiveDE &other) = default;
-
-void PagmoSelfAdaptiveDE::configure(const core::ParameterSet &parameters) {
-    configured_parameters_ = parameter_space_.apply_defaults(parameters);
-    parameter_space_.validate(configured_parameters_);
-}
-
-OptimizationResult PagmoSelfAdaptiveDE::run(const core::IProblem &problem,
-                                            const core::Budget &budget,
-                                            unsigned long seed) {
-    const auto variant = static_cast<unsigned>(get_int_param(configured_parameters_, "variant"));
-    const auto variant_adptv = static_cast<unsigned>(get_int_param(configured_parameters_, "variant_adptv"));
-    const auto ftol = get_double_param(configured_parameters_, "ftol");
-    const auto xtol = get_double_param(configured_parameters_, "xtol");
-    const auto memory = get_bool_param(configured_parameters_, "memory");
+core::OptimizationResult PagmoSelfAdaptiveDE::run(const core::IProblem &problem,
+                                                   const core::Budget &budget,
+                                                   unsigned long seed) {
+    const auto variant = static_cast<unsigned>(get_param<std::int64_t>(configured_parameters_, "variant"));
+    const auto variant_adptv = static_cast<unsigned>(get_param<std::int64_t>(configured_parameters_, "variant_adptv"));
+    const auto ftol = get_param<double>(configured_parameters_, "ftol");
+    const auto xtol = get_param<double>(configured_parameters_, "xtol");
+    const auto memory = get_param<bool>(configured_parameters_, "memory");
 
     return run_population(
         problem,
@@ -119,13 +81,12 @@ OptimizationResult PagmoSelfAdaptiveDE::run(const core::IProblem &problem,
         });
 }
 
-std::unique_ptr<core::IEvolutionaryAlgorithm>
-PagmoSelfAdaptiveDE::clone() const {
+std::unique_ptr<core::IEvolutionaryAlgorithm> PagmoSelfAdaptiveDE::clone() const {
     return std::make_unique<PagmoSelfAdaptiveDE>(*this);
 }
 
 PagmoSelfAdaptiveDEFactory::PagmoSelfAdaptiveDEFactory()
-    : parameter_space_(make_parameter_space()), identity_(make_identity()) {}
+    : PagmoAlgorithmFactoryBase(make_parameter_space(), make_identity()) {}
 
 core::EvolutionaryAlgorithmPtr PagmoSelfAdaptiveDEFactory::create() const {
     return std::make_unique<PagmoSelfAdaptiveDE>();

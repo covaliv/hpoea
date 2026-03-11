@@ -3,16 +3,12 @@
 #include "budget_util.hpp"
 #include "problem_adapter.hpp"
 
-#include <chrono>
 #include <pagmo/algorithm.hpp>
 #include <pagmo/algorithms/cmaes.hpp>
-#include <pagmo/population.hpp>
-#include <pagmo/problem.hpp>
 
 namespace {
 
 using hpoea::core::AlgorithmIdentity;
-using hpoea::core::OptimizationResult;
 using hpoea::core::ParameterDescriptor;
 using hpoea::core::ParameterSpace;
 using hpoea::core::ParameterType;
@@ -20,41 +16,18 @@ using hpoea::core::ParameterType;
 ParameterSpace make_parameter_space() {
     ParameterSpace space;
 
+    space.add_descriptor(hpoea::pagmo_wrappers::make_population_size_descriptor(50, {5, 5000}));
+    space.add_descriptor(hpoea::pagmo_wrappers::make_generations_descriptor());
+
     ParameterDescriptor d;
-    d.name = "population_size";
-    d.type = ParameterType::Integer;
-    d.integer_range = hpoea::core::IntegerRange{5, 5000};
-    d.default_value = std::int64_t{50};
-    d.required = true;
-    space.add_descriptor(d);
-
-    d = {};
-    d.name = "generations";
-    d.type = ParameterType::Integer;
-    d.integer_range = hpoea::core::IntegerRange{1, 1000};
-    d.default_value = std::int64_t{100};
-    space.add_descriptor(d);
-
-    d = {};
     d.name = "sigma0";
     d.type = ParameterType::Continuous;
     d.continuous_range = hpoea::core::ContinuousRange{1e-6, 5.0};
     d.default_value = 0.5;
     space.add_descriptor(d);
 
-    d = {};
-    d.name = "ftol";
-    d.type = ParameterType::Continuous;
-    d.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
-    d.default_value = 1e-6;
-    space.add_descriptor(d);
-
-    d = {};
-    d.name = "xtol";
-    d.type = ParameterType::Continuous;
-    d.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
-    d.default_value = 1e-6;
-    space.add_descriptor(d);
+    space.add_descriptor(hpoea::pagmo_wrappers::make_ftol_descriptor());
+    space.add_descriptor(hpoea::pagmo_wrappers::make_xtol_descriptor());
 
     return space;
 }
@@ -68,21 +41,14 @@ AlgorithmIdentity make_identity() {
 namespace hpoea::pagmo_wrappers {
 
 PagmoCmaes::PagmoCmaes()
-    : parameter_space_(make_parameter_space()),
-      configured_parameters_(parameter_space_.apply_defaults({})),
-      identity_(make_identity()) {}
-
-void PagmoCmaes::configure(const core::ParameterSet &parameters) {
-    configured_parameters_ = parameter_space_.apply_defaults(parameters);
-    parameter_space_.validate(configured_parameters_);
-}
+    : PagmoAlgorithmBase(make_parameter_space(), make_identity()) {}
 
 core::OptimizationResult PagmoCmaes::run(const core::IProblem &problem,
                                          const core::Budget &budget,
                                          unsigned long seed) {
-    const auto sigma0 = get_double_param(configured_parameters_, "sigma0");
-    const auto ftol = get_double_param(configured_parameters_, "ftol");
-    const auto xtol = get_double_param(configured_parameters_, "xtol");
+    const auto sigma0 = get_param<double>(configured_parameters_, "sigma0");
+    const auto ftol = get_param<double>(configured_parameters_, "ftol");
+    const auto xtol = get_param<double>(configured_parameters_, "xtol");
 
     return run_population(
         problem,
@@ -101,8 +67,7 @@ std::unique_ptr<core::IEvolutionaryAlgorithm> PagmoCmaes::clone() const {
 }
 
 PagmoCmaesFactory::PagmoCmaesFactory()
-    : parameter_space_(make_parameter_space()),
-      identity_(make_identity()) {}
+    : PagmoAlgorithmFactoryBase(make_parameter_space(), make_identity()) {}
 
 core::EvolutionaryAlgorithmPtr PagmoCmaesFactory::create() const {
     return std::make_unique<PagmoCmaes>();
