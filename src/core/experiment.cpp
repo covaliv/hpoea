@@ -170,6 +170,17 @@ const IEvolutionaryAlgorithmFactory &resolve_algorithm_factory(
     return *owned_factory;
 }
 
+std::mt19937 seed_rng(const std::optional<unsigned long> &random_seed) {
+    std::mt19937 rng;
+    if (random_seed) {
+        rng.seed(*random_seed);
+    } else {
+        std::random_device device;
+        rng.seed(device());
+    }
+    return rng;
+}
+
 ParameterSet select_logged_parameters(const HyperparameterTrialRecord &trial_record) {
     if (!trial_record.optimization_result.effective_parameters.empty()) {
         return trial_record.optimization_result.effective_parameters;
@@ -183,7 +194,7 @@ RunRecord build_run_record(const ExperimentConfig &config,
                            const AlgorithmIdentity &optimizer_identity,
                            const ParameterSet &optimizer_parameters,
                            unsigned long optimizer_seed,
-                            const HyperparameterTrialRecord &trial_record) {
+                           const HyperparameterTrialRecord &trial_record) {
     RunRecord log_record;
     log_record.experiment_id = config.experiment_id;
     log_record.problem_id = problem.metadata().id;
@@ -195,12 +206,59 @@ RunRecord build_run_record(const ExperimentConfig &config,
     log_record.objective_value = trial_record.optimization_result.best_fitness;
     log_record.requested_budget = trial_record.optimization_result.requested_budget;
     log_record.effective_budget = trial_record.optimization_result.effective_budget;
-    log_record.budget_usage = trial_record.optimization_result.budget_usage;
+    log_record.algorithm_usage = trial_record.optimization_result.algorithm_usage;
     log_record.error_info = trial_record.optimization_result.error_info;
     log_record.algorithm_seed = trial_record.optimization_result.seed;
     log_record.optimizer_seed = optimizer_seed;
     log_record.message = trial_record.optimization_result.message;
     return log_record;
+}
+
+void run_island_trials(
+    std::size_t island_idx,
+    std::size_t trials_per_island,
+    const ExperimentConfig &config,
+    const std::vector<unsigned long> &seeds,
+    const IEvolutionaryAlgorithmFactory &active_algorithm_factory,
+    const IProblem &problem,
+    const ParameterSet &optimizer_parameters,
+    std::vector<hpoea::core::HyperparameterOptimizationResult> &optimization_results,
+    hpoea::core::IHyperparameterOptimizer &worker_optimizer,
+    hpoea::core::ILogger &logger,
+    std::mutex &logger_mutex,
+    std::atomic<bool> &stop_requested) {
+    const std::size_t start_trial = island_idx * trials_per_island;
+    const std::size_t end_trial = std::min(start_trial + trials_per_island, config.trials_per_optimizer);
+
+    for (std::size_t trial = start_trial; trial < end_trial; ++trial) {
+        if (stop_requested.load(std::memory_order_relaxed)) break;
+        const unsigned long optimizer_seed = seeds[trial];
+
+        auto optimization_result = worker_optimizer.optimize(
+            active_algorithm_factory,
+            problem,
+            config.optimizer_budget,
+            config.algorithm_budget,
+            optimizer_seed);
+        optimization_result.seed = optimizer_seed;
+        optimization_result.effective_optimizer_parameters = optimizer_parameters;
+
+        optimization_results[trial] = std::move(optimization_result);
+
+        {
+            std::scoped_lock lock(logger_mutex);
+            for (const auto &trial_record : optimization_results[trial].trials) {
+                logger.log(build_run_record(
+                    config,
+                    problem,
+                    active_algorithm_factory.identity(),
+                    worker_optimizer.identity(),
+                    optimizer_parameters,
+                    optimizer_seed,
+                    trial_record));
+            }
+        }
+    }
 }
 
 } // namespace
@@ -215,6 +273,11 @@ ExperimentResult SequentialExperimentManager::run_experiment(const ExperimentCon
     if (config.trials_per_optimizer == 0) {
         throw std::invalid_argument("trials_per_optimizer must be greater than zero");
     }
+    if (config.islands > 1) {
+        throw std::invalid_argument(
+            "sequential experiment manager does not support multiple islands; "
+            "use ParallelExperimentManager or set islands to 1");
+    }
 
     std::unique_ptr<IEvolutionaryAlgorithmFactory> owned_factory;
     const auto &active_algorithm_factory =
@@ -227,13 +290,7 @@ ExperimentResult SequentialExperimentManager::run_experiment(const ExperimentCon
 
     optimizer.configure(optimizer_parameters);
 
-    std::mt19937 rng;
-    if (config.random_seed) {
-        rng.seed(*config.random_seed);
-    } else {
-        std::random_device device;
-        rng.seed(device());
-    }
+    auto rng = seed_rng(config.random_seed);
 
     for (std::size_t trial = 0; trial < config.trials_per_optimizer; ++trial) {
         const unsigned long optimizer_seed = static_cast<unsigned long>(rng());
@@ -296,13 +353,7 @@ ExperimentResult ParallelExperimentManager::run_experiment(const ExperimentConfi
 
     optimizer.configure(optimizer_parameters);
 
-    std::mt19937 rng;
-    if (config.random_seed) {
-        rng.seed(*config.random_seed);
-    } else {
-        std::random_device device;
-        rng.seed(device());
-    }
+    auto rng = seed_rng(config.random_seed);
     std::vector<unsigned long> seeds;
     seeds.reserve(config.trials_per_optimizer);
     for (std::size_t i = 0; i < config.trials_per_optimizer; ++i) {
@@ -329,38 +380,10 @@ ExperimentResult ParallelExperimentManager::run_experiment(const ExperimentConfi
 
         workers.emplace_back([&, island_idx, worker_optimizer = std::move(worker_optimizer)]() mutable {
             try {
-                const std::size_t start_trial = island_idx * trials_per_island;
-                const std::size_t end_trial = std::min(start_trial + trials_per_island, config.trials_per_optimizer);
-
-                for (std::size_t trial = start_trial; trial < end_trial; ++trial) {
-                    if (stop_requested.load(std::memory_order_relaxed)) break;
-                    const unsigned long optimizer_seed = seeds[trial];
-
-                    auto optimization_result = worker_optimizer->optimize(
-                        active_algorithm_factory,
-                        problem,
-                        config.optimizer_budget,
-                        config.algorithm_budget,
-                        optimizer_seed);
-                    optimization_result.seed = optimizer_seed;
-                    optimization_result.effective_optimizer_parameters = optimizer_parameters;
-
-                    optimization_results[trial] = std::move(optimization_result);
-
-                    {
-                        std::scoped_lock lock(logger_mutex);
-                        for (const auto &trial_record : optimization_results[trial].trials) {
-                            logger.log(build_run_record(
-                                config,
-                                problem,
-                                active_algorithm_factory.identity(),
-                                worker_optimizer->identity(),
-                                optimizer_parameters,
-                                optimizer_seed,
-                                trial_record));
-                        }
-                    }
-                }
+                run_island_trials(island_idx, trials_per_island, config, seeds,
+                                  active_algorithm_factory, problem, optimizer_parameters,
+                                  optimization_results, *worker_optimizer, logger,
+                                  logger_mutex, stop_requested);
             } catch (...) {
                 stop_requested.store(true, std::memory_order_relaxed);
                 std::scoped_lock lock(worker_error_mutex);
@@ -388,7 +411,11 @@ ExperimentResult ParallelExperimentManager::run_experiment(const ExperimentConfi
         throw std::runtime_error(combined);
     }
 
-    result.optimizer_results = std::move(optimization_results);
+    for (auto &opt_result : optimization_results) {
+        if (!opt_result.trials.empty()) {
+            result.optimizer_results.push_back(std::move(opt_result));
+        }
+    }
     logger.flush();
 
     return result;
