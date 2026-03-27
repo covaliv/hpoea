@@ -21,7 +21,7 @@ int main() {
     core::ExperimentConfig config;
     config.experiment_id = "advanced_example";
     config.trials_per_optimizer = 5;
-    config.islands = 2;
+    config.islands = 1;
     config.algorithm_budget.generations = 50;
     config.optimizer_budget.generations = 15;
     config.optimizer_budget.function_evaluations = 3000;
@@ -40,7 +40,7 @@ int main() {
         const auto &best_result = result.optimizer_results[0];
         std::cout << "best_objective: " << best_result.best_objective << "\n";
         std::cout << "trials: " << best_result.trials.size() << "\n";
-        std::cout << "function_evaluations: " << best_result.budget_usage.function_evaluations << "\n";
+        std::cout << "function_evaluations: " << best_result.optimizer_usage.objective_calls << "\n";
         
         if (!best_result.best_parameters.empty()) {
             for (const auto &[name, value] : best_result.best_parameters) {

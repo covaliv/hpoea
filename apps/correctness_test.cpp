@@ -2,6 +2,7 @@
 #include "hpoea/wrappers/pagmo/cmaes_hyper.hpp"
 #include "hpoea/wrappers/problems/benchmark_problems.hpp"
 #include "hpoea/core/types.hpp"
+#include "test_util.hpp"
 
 #include <iostream>
 #include <iomanip>
@@ -23,12 +24,6 @@ struct TestResult { // keeps track of pass/fail
     }
 };
 
-bool in_bounds(const std::vector<double> &x, const std::vector<double> &lo, const std::vector<double> &hi) {
-    if (x.size() != lo.size()) return false;
-    for (size_t i = 0; i < x.size(); ++i)
-        if (x[i] < lo[i] || x[i] > hi[i]) return false;
-    return true;
-}
 
 core::OptimizationResult run_de(int dim, int pop, int gens, unsigned long seed) { // helper
     wrappers::problems::SphereProblem problem(dim);
@@ -51,19 +46,19 @@ int main() {
     
     TestResult t;
     
-    { // basic opt should work
+    {
         auto r = run_de(5, 30, 50, 42);
         wrappers::problems::SphereProblem p(5);
         bool ok = r.status == core::RunStatus::Success &&
                   r.best_fitness >= 0 &&
                   r.best_solution.size() == 5 &&
                   in_bounds(r.best_solution, p.lower_bounds(), p.upper_bounds()) &&
-                  r.budget_usage.generations <= 50 &&
-                  r.budget_usage.function_evaluations > 0;
+                  r.algorithm_usage.generations <= 50 &&
+                  r.algorithm_usage.function_evaluations > 0;
         t.check("basic optimization", ok, "fitness=" + std::to_string(r.best_fitness));
     }
     
-    { // same seed = same result, right?
+    {
         auto r1 = run_de(5, 20, 30, 999);
         auto r2 = run_de(5, 20, 30, 999);
         double diff = std::abs(r1.best_fitness - r2.best_fitness);
@@ -73,26 +68,26 @@ int main() {
         t.check("reproducibility", ok, "diff=" + std::to_string(diff));
     }
     
-    { // shouldn't exceed budget even if we ask for more
+    {
         wrappers::problems::SphereProblem problem(5);
         pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
         auto algo = factory.create();
         
         core::ParameterSet params;
         params.emplace("population_size", static_cast<std::int64_t>(20));
-        params.emplace("generations", static_cast<std::int64_t>(1000)); // way more than we'll allow
+        params.emplace("generations", static_cast<std::int64_t>(1000));
         algo->configure(params);
         
         core::Budget budget;
-        budget.generations = 50; // hard cap
+        budget.generations = 50;
         auto r = algo->run(problem, budget, 42);
         
         bool ok = (r.status == core::RunStatus::Success || r.status == core::RunStatus::BudgetExceeded) &&
-                  r.budget_usage.generations <= 50;
-        t.check("budget enforcement", ok, "used=" + std::to_string(r.budget_usage.generations));
+                  r.algorithm_usage.generations <= 50;
+        t.check("budget enforcement", ok, "used=" + std::to_string(r.algorithm_usage.generations));
     }
     
-    { // more gens should give better results
+    {
         auto r20 = run_de(5, 30, 20, 42);
         auto r100 = run_de(5, 30, 100, 42);
         bool ok = r20.status == core::RunStatus::Success &&
@@ -102,7 +97,7 @@ int main() {
                 "20g=" + std::to_string(r20.best_fitness) + " 100g=" + std::to_string(r100.best_fitness));
     }
     
-    { // HPO should find something decent
+    { // hpo should find something decent
         wrappers::problems::SphereProblem problem(5);
         pagmo_wrappers::PagmoDifferentialEvolutionFactory ea_factory;
         pagmo_wrappers::PagmoCmaesHyperOptimizer hpo;
@@ -112,17 +107,20 @@ int main() {
         hpo_params.emplace("sigma0", 0.5);
         hpo.configure(hpo_params);
         
-        core::Budget budget;
-        budget.generations = 10;
-        budget.function_evaluations = 3000;
-        
-        auto r = hpo.optimize(ea_factory, problem, budget, 42);
+        core::Budget optimizer_budget;
+        optimizer_budget.generations = 10;
+        optimizer_budget.function_evaluations = 3000;
+
+        core::Budget algorithm_budget;
+        algorithm_budget.generations = 50;
+
+        auto r = hpo.optimize(ea_factory, problem, optimizer_budget, algorithm_budget, 42);
         bool ok = r.status == core::RunStatus::Success &&
                   !r.trials.empty() &&
                   std::isfinite(r.best_objective) &&
                   r.best_objective >= 0 &&
                   !r.best_parameters.empty() &&
-                  r.budget_usage.function_evaluations > 0;
+                  r.optimizer_usage.objective_calls > 0;
         t.check("hyperparameter optimization", ok, 
                 "obj=" + std::to_string(r.best_objective) + " trials=" + std::to_string(r.trials.size()));
     }

@@ -62,5 +62,9 @@ if (HPOEA_WITH_PAGMO)
     add_executable(search_space_example search_space_example.cpp)
     target_link_libraries(search_space_example PRIVATE hpoea_pagmo hpoea_core)
     target_compile_features(search_space_example PRIVATE cxx_std_20)
+
+    add_executable(hpoea_benchmark_suite benchmark_suite.cpp)
+    target_link_libraries(hpoea_benchmark_suite PRIVATE hpoea_pagmo hpoea_core)
+    target_compile_features(hpoea_benchmark_suite PRIVATE cxx_std_20)
 endif ()
 

@@ -87,7 +87,7 @@ int main() {
         }
         distance = std::sqrt(distance);
         std::cout << "distance_to_optimum: " << distance << "\n";
-        std::cout << "function_evaluations: " << result.budget_usage.function_evaluations << "\n";
+        std::cout << "function_evaluations: " << result.algorithm_usage.function_evaluations << "\n";
     } else {
         std::cerr << "error: " << result.message << "\n";
         return 1;

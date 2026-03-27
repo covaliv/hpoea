@@ -84,7 +84,7 @@ int main() {
             std::cout << std::fixed << std::setprecision(6);
             std::cout << opt_config.name << ": " << best.best_objective 
                       << " (trials: " << best.trials.size() 
-                      << ", evals: " << best.budget_usage.function_evaluations << ")\n";
+                      << ", evals: " << best.optimizer_usage.objective_calls << ")\n";
         }
     }
     

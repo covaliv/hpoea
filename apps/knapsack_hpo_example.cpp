@@ -24,11 +24,14 @@ int main() {
     optimizer_params.emplace("sigma0", 0.3);
     optimizer.configure(optimizer_params);
     
-    core::Budget budget;
-    budget.generations = 20;
-    budget.function_evaluations = 5000;
-    
-    auto result = optimizer.optimize(ea_factory, problem, budget, 42UL);
+    core::Budget optimizer_budget;
+    optimizer_budget.generations = 20;
+    optimizer_budget.function_evaluations = 5000;
+
+    core::Budget algorithm_budget;
+    algorithm_budget.generations = 50;
+
+    auto result = optimizer.optimize(ea_factory, problem, optimizer_budget, algorithm_budget, 42UL);
     
     if (result.status == core::RunStatus::Success) {
         std::cout << std::fixed << std::setprecision(6);
@@ -42,8 +45,8 @@ int main() {
             std::cout << "\n";
         }
         
-        std::cout << "function_evaluations: " << result.budget_usage.function_evaluations << "\n";
-        std::cout << "wall_time_ms: " << result.budget_usage.wall_time.count() << "\n";
+        std::cout << "function_evaluations: " << result.optimizer_usage.objective_calls << "\n";
+        std::cout << "wall_time_ms: " << result.optimizer_usage.wall_time.count() << "\n";
     } else {
         std::cerr << "error: " << result.message << "\n";
         return 1;

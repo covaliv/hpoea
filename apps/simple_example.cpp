@@ -7,20 +7,10 @@
 
 #include <iostream>
 #include <iomanip>
-#include <cmath>
 #include <algorithm>
 #include <memory>
 
 using namespace hpoea;
-
-void print_vec(const std::vector<double> &v) { // just prints [x, y, z, ...]
-    std::cout << "[";
-    for (size_t i = 0; i < v.size(); ++i) {
-        std::cout << v[i];
-        if (i < v.size() - 1) std::cout << ", ";
-    }
-    std::cout << "]";
-}
 
 int main() {
     std::cout << std::fixed << std::setprecision(6);
@@ -47,8 +37,13 @@ int main() {
         auto r = algo->run(problem, budget, 42);
         
         std::cout << "   fitness: " << r.best_fitness << "\n";
-        std::cout << "   solution: "; print_vec(r.best_solution); std::cout << "\n";
-        std::cout << "   evals: " << r.budget_usage.function_evaluations << "\n\n";
+        std::cout << "   solution: [";
+        for (size_t i = 0; i < r.best_solution.size(); ++i) {
+            std::cout << r.best_solution[i];
+            if (i < r.best_solution.size() - 1) std::cout << ", ";
+        }
+        std::cout << "]\n";
+        std::cout << "   evals: " << r.algorithm_usage.function_evaluations << "\n\n";
     }
     
     // see which algo does best
@@ -110,11 +105,14 @@ int main() {
         hpo_params.emplace("sigma0", 0.5);
         hpo.configure(hpo_params);
         
-        core::Budget budget;
-        budget.generations = 15;
-        budget.function_evaluations = 5000;
-        
-        auto r = hpo.optimize(ea_factory, problem, budget, 42);
+        core::Budget optimizer_budget;
+        optimizer_budget.generations = 15;
+        optimizer_budget.function_evaluations = 5000;
+
+        core::Budget algorithm_budget;
+        algorithm_budget.generations = 50;
+
+        auto r = hpo.optimize(ea_factory, problem, optimizer_budget, algorithm_budget, 42);
         
         std::cout << "   objective: " << r.best_objective << "\n";
         std::cout << "   trials: " << r.trials.size() << "\n";

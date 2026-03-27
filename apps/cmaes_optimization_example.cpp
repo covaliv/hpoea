@@ -26,9 +26,9 @@ int main() {
     if (result.status == core::RunStatus::Success) {
         std::cout << std::fixed << std::setprecision(6);
         std::cout << "best_fitness: " << result.best_fitness << "\n";
-        std::cout << "function_evaluations: " << result.budget_usage.function_evaluations << "\n";
-        std::cout << "generations: " << result.budget_usage.generations << "\n";
-        std::cout << "wall_time_ms: " << result.budget_usage.wall_time.count() << "\n";
+        std::cout << "function_evaluations: " << result.algorithm_usage.function_evaluations << "\n";
+        std::cout << "generations: " << result.algorithm_usage.generations << "\n";
+        std::cout << "wall_time_ms: " << result.algorithm_usage.wall_time.count() << "\n";
     } else {
         std::cerr << "error: " << result.message << "\n";
         return 1;

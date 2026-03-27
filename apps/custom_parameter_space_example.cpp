@@ -98,7 +98,7 @@ int main() {
         if (result.status == core::RunStatus::Success) {
             std::cout << std::fixed << std::setprecision(6);
             std::cout << "best_fitness: " << result.best_fitness << "\n";
-            std::cout << "function_evaluations: " << result.budget_usage.function_evaluations << "\n";
+            std::cout << "function_evaluations: " << result.algorithm_usage.function_evaluations << "\n";
         }
     }
     

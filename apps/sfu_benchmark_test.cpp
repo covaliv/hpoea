@@ -4,6 +4,7 @@
 #include "hpoea/wrappers/pagmo/pso_algorithm.hpp"
 #include "hpoea/wrappers/problems/benchmark_problems.hpp"
 #include "hpoea/core/types.hpp"
+#include "test_util.hpp"
 
 #include <iostream>
 #include <iomanip>
@@ -14,12 +15,6 @@
 
 using namespace hpoea;
 
-bool in_bounds(const std::vector<double> &x, const std::vector<double> &lo, const std::vector<double> &hi) {
-    if (x.size() != lo.size()) return false;
-    for (size_t i = 0; i < x.size(); ++i)
-        if (x[i] < lo[i] || x[i] > hi[i]) return false;
-    return true;
-}
 
 int main() {
     std::cout << std::fixed << std::setprecision(6);

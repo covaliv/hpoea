@@ -55,9 +55,9 @@ int main() {
         std::cout << "total_value: " << total_value << "\n";
         std::cout << "total_weight: " << total_weight << "\n";
         std::cout << "capacity: " << capacity << "\n";
-        std::cout << "function_evaluations: " << result.budget_usage.function_evaluations << "\n";
-        std::cout << "generations: " << result.budget_usage.generations << "\n";
-        std::cout << "wall_time_ms: " << result.budget_usage.wall_time.count() << "\n";
+        std::cout << "function_evaluations: " << result.algorithm_usage.function_evaluations << "\n";
+        std::cout << "generations: " << result.algorithm_usage.generations << "\n";
+        std::cout << "wall_time_ms: " << result.algorithm_usage.wall_time.count() << "\n";
     } else {
         std::cerr << "error: " << result.message << "\n";
         return 1;
