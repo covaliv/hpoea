@@ -282,8 +282,10 @@ double inverse_transform(double value, Transform transform) {
     return std::pow(10.0, value);
   case Transform::log2:
     return std::pow(2.0, value);
-  case Transform::sqrt:
-    return value * value;
+  case Transform::sqrt: {
+    const auto v = std::max(0.0, value);
+    return v * v;
+  }
   }
   throw std::logic_error("unhandled transform");
 }
