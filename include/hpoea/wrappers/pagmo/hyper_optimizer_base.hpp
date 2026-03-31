@@ -25,6 +25,7 @@ public:
 
 protected:
     PagmoHyperOptimizerBase(core::ParameterSpace space, core::AlgorithmIdentity identity);
+    PagmoHyperOptimizerBase(const PagmoHyperOptimizerBase &other);
 
     core::ParameterSpace parameter_space_;
     core::ParameterSet configured_parameters_;
