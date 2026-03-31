@@ -180,6 +180,8 @@ JsonlLogger::JsonlLogger(std::filesystem::path file_path, bool auto_flush)
 }
 
 void JsonlLogger::log(const RunRecord &record) {
+    std::scoped_lock lock(mutex_);
+
     if (!stream_.is_open()) {
         stream_.clear();
         stream_.open(file_path_, std::ios::out | std::ios::app);
@@ -201,6 +203,8 @@ void JsonlLogger::log(const RunRecord &record) {
 }
 
 void JsonlLogger::flush() {
+    std::scoped_lock lock(mutex_);
+
     if (stream_.is_open()) {
         stream_.flush();
     }

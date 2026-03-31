@@ -3,8 +3,10 @@
 #include "hpoea/core/parameters.hpp"
 #include "hpoea/core/types.hpp"
 
+#include <atomic>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <optional>
 #include <string>
 
@@ -58,7 +60,8 @@ public:
 private:
     std::filesystem::path file_path_;
     std::ofstream stream_;
-    std::size_t records_written_{0};
+    mutable std::mutex mutex_;
+    std::atomic<std::size_t> records_written_{0};
     bool auto_flush_{true};
 };
 
