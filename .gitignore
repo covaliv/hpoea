@@ -1,4 +1,6 @@
 build/
+build-debug/
+build-manual/
 *.o
 *.a
 *.so
@@ -10,8 +12,9 @@ cmake_install.cmake
 Makefile
 *.log
 *.jsonl
+.cache/
 .vscode/
 .idea/
 *.swp
 *~
-
+.worktrees/

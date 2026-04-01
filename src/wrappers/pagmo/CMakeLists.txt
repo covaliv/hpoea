@@ -1,6 +1,8 @@
 find_package(Pagmo REQUIRED)
 
 set(HPOEA_PAGMO_SOURCES
+    algorithm_base.cpp
+    hyper_optimizer_base.cpp
     cmaes_hyper.cpp
     de_algorithm.cpp
     cmaes_algorithm.cpp

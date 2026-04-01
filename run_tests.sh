@@ -12,49 +12,95 @@ fi
 
 cd build
 
-if [ ! -f "CMakeCache.txt" ]; then
-    echo "configuring cmake..."
-    cmake .. -DHPOEA_WITH_PAGMO=ON -DHPOEA_BUILD_TESTS=ON
-fi
+echo "configuring cmake..."
+cmake .. -DHPOEA_WITH_PAGMO=ON -DHPOEA_BUILD_TESTS=ON
 
 echo "building tests..."
-cmake --build . --target hpoea_wrapper_test hpoea_hyper_test \
-    hpoea_benchmark_problems_test hpoea_parallel_experiment_test \
-    hpoea_integration_test hpoea_benchmark_suite hpoea_correctness_test
+cmake --build .
 
 echo ""
 echo "=== Running Tests ==="
 
 echo ""
-echo "1. wrapper tests (de, pso, sade)"
-./tests/hpoea_wrapper_test || exit 1
+echo "1. types/budget tests"
+./tests/hpoea_types_budget_tests || exit 1
 
 echo ""
-echo "2. hyper optimizer tests (cmaes, sa, pso, nm)"
-./tests/hpoea_hyper_test || exit 1
+echo "2. parameter space tests"
+./tests/hpoea_parameter_space_tests || exit 1
 
 echo ""
-echo "3. benchmark problems"
-./tests/hpoea_benchmark_problems_test || exit 1
+echo "3. search space tests"
+./tests/hpoea_search_space_tests || exit 1
 
 echo ""
-echo "4. parallel experiments"
-HPOEA_RUN_PARALLEL_TESTS=1 ./tests/hpoea_parallel_experiment_test || exit 1
+echo "4. logging tests"
+./tests/hpoea_logging_tests || exit 1
 
 echo ""
-echo "5. integration test"
-./tests/hpoea_integration_test || exit 1
+echo "5. benchmark problem tests"
+./tests/hpoea_benchmark_problem_tests || exit 1
 
 echo ""
-echo "6. correctness test"
-./tests/hpoea_correctness_test || exit 1
+echo "6. problem adapter tests"
+./tests/hpoea_problem_adapter_tests || exit 1
 
 echo ""
-echo "7. benchmark suite"
-./tests/hpoea_benchmark_suite || exit 1
+echo "7. budget util tests"
+./tests/hpoea_budget_util_tests || exit 1
+
+echo ""
+echo "8. hyper tuning udp tests"
+./tests/hpoea_hyper_tuning_udp_tests || exit 1
+
+echo ""
+echo "9. hyper util tests"
+./tests/hpoea_hyper_util_tests || exit 1
+
+echo ""
+echo "10. evolutionary algorithm tests"
+./tests/hpoea_evolutionary_algorithms_tests || exit 1
+
+echo ""
+echo "11. hyper optimizer tests"
+./tests/hpoea_hyper_optimizer_tests || exit 1
+
+echo ""
+echo "12. experiment manager tests"
+./tests/hpoea_experiment_manager_tests || exit 1
+
+echo ""
+echo "13. parallel error handling tests"
+./tests/hpoea_parallel_error_handling_test || exit 1
+
+echo ""
+echo "14. baseline optimizer tests"
+./tests/hpoea_baseline_optimizer_tests || exit 1
+
+echo ""
+echo "15. clone tests"
+./tests/hpoea_clone_tests || exit 1
+
+echo ""
+echo "16. factory contract tests"
+./tests/hpoea_factory_contract_tests || exit 1
+
+echo ""
+echo "17. transform bounds tests"
+./tests/hpoea_transform_bounds_tests || exit 1
+
+echo ""
+echo "18. hyper clone tests"
+./tests/hpoea_hyper_clone_tests || exit 1
+
+echo ""
+echo "19. fix regression tests"
+./tests/hpoea_fix_regression_tests || exit 1
+
+echo ""
+echo "20. coverage gap tests"
+./tests/hpoea_coverage_gap_tests || exit 1
 
 echo ""
 echo "=== All Tests Passed ==="
 echo ""
-echo "verbose output: HPOEA_LOG_RESULTS=1 ./tests/hpoea_wrapper_test"
-
