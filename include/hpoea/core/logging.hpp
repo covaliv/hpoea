@@ -53,7 +53,10 @@ public:
 
     [[nodiscard]] std::size_t records_written() const noexcept override { return records_written_; }
 
-    [[nodiscard]] bool good() const noexcept override { return stream_.good(); }
+    [[nodiscard]] bool good() const noexcept override {
+        std::scoped_lock lock(mutex_);
+        return stream_.good();
+    }
 
     [[nodiscard]] const std::filesystem::path &path() const noexcept { return file_path_; }
 

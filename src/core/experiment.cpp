@@ -411,10 +411,17 @@ ExperimentResult ParallelExperimentManager::run_experiment(const ExperimentConfi
         throw std::runtime_error(combined);
     }
 
+    std::size_t dropped = 0;
     for (auto &opt_result : optimization_results) {
         if (!opt_result.trials.empty()) {
             result.optimizer_results.push_back(std::move(opt_result));
+        } else {
+            ++dropped;
         }
+    }
+    if (dropped > 0 && !result.optimizer_results.empty()) {
+        auto &last = result.optimizer_results.back();
+        last.message += " (" + std::to_string(dropped) + " trial(s) dropped due to early termination)";
     }
     logger.flush();
 

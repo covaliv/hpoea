@@ -12,6 +12,7 @@ PagmoAlgorithmBase::PagmoAlgorithmBase(core::ParameterSpace space,
 
 void PagmoAlgorithmBase::configure(const core::ParameterSet &parameters) {
     configured_parameters_ = parameter_space_.apply_defaults(parameters);
+    parameter_space_.validate(configured_parameters_);
 }
 
 PagmoAlgorithmFactoryBase::PagmoAlgorithmFactoryBase(core::ParameterSpace space,

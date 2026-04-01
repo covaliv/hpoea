@@ -195,7 +195,7 @@ void JsonlLogger::log(const RunRecord &record) {
         throw std::runtime_error("failed to write log record to: " + file_path_.string());
     }
 
-    ++records_written_;
+    records_written_.fetch_add(1, std::memory_order_release);
 
     if (auto_flush_) {
         stream_.flush();
