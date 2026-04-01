@@ -109,23 +109,20 @@ PagmoSimulatedAnnealingHyperOptimizer::optimize(
             std::chrono::steady_clock::time_point start,
             HyperparameterTuningProblem::Context &ctx) -> std::pair<pagmo::population, std::size_t> {
 
-            const auto ts = std::get<double>(configured_parameters_.at("ts"));
-            const auto tf = std::get<double>(configured_parameters_.at("tf"));
-            const auto start_range = std::get<double>(configured_parameters_.at("start_range"));
+            const auto ts = get_param<double>(configured_parameters_, "ts");
+            const auto tf = get_param<double>(configured_parameters_, "tf");
+            const auto start_range = get_param<double>(configured_parameters_, "start_range");
 
             constexpr auto uint_max = static_cast<std::size_t>(std::numeric_limits<unsigned>::max());
 
-            const auto n_T_adj_i64 = std::get<std::int64_t>(configured_parameters_.at("n_T_adj"));
             const auto n_T_adj = static_cast<unsigned>(
-                std::min(static_cast<std::size_t>(n_T_adj_i64), uint_max));
+                std::min(get_param<std::int64_t>(configured_parameters_, "n_T_adj"), uint_max));
 
-            const auto n_range_adj_i64 = std::get<std::int64_t>(configured_parameters_.at("n_range_adj"));
             const auto n_range_adj = static_cast<unsigned>(
-                std::min(static_cast<std::size_t>(n_range_adj_i64), uint_max));
+                std::min(get_param<std::int64_t>(configured_parameters_, "n_range_adj"), uint_max));
 
-            const auto bin_size_i64 = std::get<std::int64_t>(configured_parameters_.at("bin_size"));
             const auto bin_size = static_cast<unsigned>(
-                std::min(static_cast<std::size_t>(bin_size_i64), uint_max));
+                std::min(get_param<std::int64_t>(configured_parameters_, "bin_size"), uint_max));
 
             const auto seed32 = to_seed32(seed);
 
@@ -134,9 +131,8 @@ PagmoSimulatedAnnealingHyperOptimizer::optimize(
 
             pagmo::population population{tuning_problem, 1, derive_seed(seed, 1)};
 
-            auto iterations_i64 = std::get<std::int64_t>(configured_parameters_.at("iterations"));
             auto iterations = static_cast<unsigned>(
-                std::min(static_cast<std::size_t>(iterations_i64), uint_max));
+                std::min(get_param<std::int64_t>(configured_parameters_, "iterations"), uint_max));
 
             if (budget.generations) {
                 iterations = std::min(iterations,

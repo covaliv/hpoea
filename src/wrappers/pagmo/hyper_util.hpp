@@ -1,5 +1,6 @@
 #pragma once
 
+#include "hpoea/core/error_classification.hpp"
 #include "hyper_tuning_udp.hpp"
 
 #include <algorithm>
@@ -9,6 +10,7 @@
 #include <memory>
 #include <pagmo/population.hpp>
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 
 namespace hpoea::pagmo_wrappers {
@@ -116,6 +118,18 @@ core::HyperparameterOptimizationResult run_hyper_optimization(
     const std::shared_ptr<core::SearchSpace> &search_space,
     AlgorithmSetup &&setup) {
 
+    static_assert(
+        std::is_invocable_r_v<
+            std::pair<pagmo::population, std::size_t>,
+            AlgorithmSetup,
+            pagmo::problem &,
+            const std::pair<pagmo::vector_double, pagmo::vector_double> &,
+            const core::Budget &,
+            std::chrono::steady_clock::time_point,
+            HyperparameterTuningProblem::Context &>,
+        "AlgorithmSetup must be callable with "
+        "(problem&, bounds&, budget&, start_time, context&) -> pair<population, size_t>");
+
     core::HyperparameterOptimizationResult result;
     result.status = core::RunStatus::InternalError;
     result.seed = seed;
@@ -153,16 +167,9 @@ core::HyperparameterOptimizationResult run_hyper_optimization(
             std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         result.message = ex.what();
 
-        if (dynamic_cast<const core::ParameterValidationError *>(&ex)) {
-            result.status = core::RunStatus::InvalidConfiguration;
-            result.error_info = core::ErrorInfo{"invalid_configuration", "parameter_validation", ex.what()};
-        } else if (dynamic_cast<const std::invalid_argument *>(&ex)) {
-            result.status = core::RunStatus::InvalidConfiguration;
-            result.error_info = core::ErrorInfo{"invalid_configuration", "invalid_argument", ex.what()};
-        } else {
-            result.status = core::RunStatus::InternalError;
-            result.error_info = core::ErrorInfo{"internal_error", "exception", ex.what()};
-        }
+        const auto classified = core::classify_exception(ex);
+        result.status = classified.status;
+        result.error_info = classified.error_info;
     }
 
     // fallback: if we have trials from before the exception, recover the best one

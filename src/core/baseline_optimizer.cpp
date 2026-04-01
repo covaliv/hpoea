@@ -1,4 +1,5 @@
 #include "hpoea/core/baseline_optimizer.hpp"
+#include "hpoea/core/error_classification.hpp"
 
 #include <chrono>
 #include <stdexcept>
@@ -50,16 +51,9 @@ HyperparameterOptimizationResult BaselineOptimizer::optimize(
             std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         result.message = ex.what();
 
-        if (dynamic_cast<const ParameterValidationError *>(&ex)) {
-            result.status = RunStatus::InvalidConfiguration;
-            result.error_info = ErrorInfo{"invalid_configuration", "parameter_validation", ex.what()};
-        } else if (dynamic_cast<const std::invalid_argument *>(&ex)) {
-            result.status = RunStatus::InvalidConfiguration;
-            result.error_info = ErrorInfo{"invalid_configuration", "invalid_argument", ex.what()};
-        } else {
-            result.status = RunStatus::InternalError;
-            result.error_info = ErrorInfo{"internal_error", "exception", ex.what()};
-        }
+        const auto classified = classify_exception(ex);
+        result.status = classified.status;
+        result.error_info = classified.error_info;
     }
 
     return result;

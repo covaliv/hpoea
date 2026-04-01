@@ -1,4 +1,6 @@
 set(HPOEA_CORE_SOURCES
+    core/baseline_optimizer.cpp
+    core/error_classification.cpp
     core/experiment.cpp
     core/logging.cpp
     core/parameters.cpp
@@ -15,10 +17,6 @@ target_include_directories(hpoea_core
 )
 
 target_compile_features(hpoea_core PUBLIC cxx_std_20)
-
-target_compile_definitions(hpoea_core
-    PUBLIC
-        $<$<BOOL:${HPOEA_WITH_PAGMO}>:HPOEA_WITH_PAGMO>)
 
 if (HPOEA_WITH_PAGMO)
     if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/wrappers/pagmo/CMakeLists.txt)

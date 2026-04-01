@@ -1,5 +1,6 @@
 #pragma once
 
+#include "hpoea/core/error_classification.hpp"
 #include "hpoea/core/problem.hpp"
 
 #include <cmath>
@@ -9,11 +10,6 @@
 #include <utility>
 
 namespace hpoea::pagmo_wrappers {
-
-class EvaluationFailure final : public std::runtime_error {
-public:
-    using std::runtime_error::runtime_error;
-};
 
 class ProblemAdapter {
 public:
@@ -25,15 +21,15 @@ public:
         try {
             const auto value = problem().evaluate(decision_vector);
             if (!std::isfinite(value)) {
-                throw EvaluationFailure("problem evaluation returned non-finite value");
+                throw core::EvaluationFailure("problem evaluation returned non-finite value");
             }
             return {value};
-        } catch (const EvaluationFailure &) {
+        } catch (const core::EvaluationFailure &) {
             throw;
         } catch (const std::exception &ex) {
-            throw EvaluationFailure(ex.what());
+            throw core::EvaluationFailure(ex.what());
         } catch (...) {
-            throw EvaluationFailure("problem evaluation failed with unknown error");
+            throw core::EvaluationFailure("problem evaluation failed with unknown error");
         }
     }
 

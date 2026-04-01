@@ -75,8 +75,7 @@ core::HyperparameterOptimizationResult PagmoNelderMeadHyperOptimizer::optimize(
             const auto dim = bounds.first.size();
             const auto pop_size = static_cast<pagmo::population::size_type>(dim + 1);
 
-            auto max_fevals = static_cast<std::size_t>(
-                std::get<std::int64_t>(configured_parameters_.at("max_fevals")));
+            auto max_fevals = get_param<std::int64_t>(configured_parameters_, "max_fevals");
             if (budget.function_evaluations) {
                 auto available = *budget.function_evaluations > static_cast<std::size_t>(pop_size)
                     ? *budget.function_evaluations - static_cast<std::size_t>(pop_size)
@@ -88,8 +87,8 @@ core::HyperparameterOptimizationResult PagmoNelderMeadHyperOptimizer::optimize(
             constexpr auto int_max = static_cast<std::size_t>(std::numeric_limits<int>::max());
             const auto max_fevals_int = static_cast<int>(std::min(max_fevals, int_max));
 
-            const auto xtol_rel = std::get<double>(configured_parameters_.at("xtol_rel"));
-            const auto ftol_rel = std::get<double>(configured_parameters_.at("ftol_rel"));
+            const auto xtol_rel = get_param<double>(configured_parameters_, "xtol_rel");
+            const auto ftol_rel = get_param<double>(configured_parameters_, "ftol_rel");
 
             pagmo::nlopt nm_alg("neldermead");
             nm_alg.set_maxeval(max_fevals_int);

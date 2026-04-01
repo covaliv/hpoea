@@ -124,34 +124,23 @@ core::HyperparameterOptimizationResult PagmoCmaesHyperOptimizer::optimize(
             const auto pop_size = static_cast<pagmo::population::size_type>(
                 std::max(dim * 4, dim + 1));
 
-            // compute generations from configured value, clamped by budget
-            auto generations = static_cast<std::size_t>(
-                std::get<std::int64_t>(configured_parameters_.at("generations")));
-            if (budget.generations) {
-                generations = std::min(generations, *budget.generations);
-            }
-            if (budget.function_evaluations) {
-                const auto ps = std::max<std::size_t>(static_cast<std::size_t>(pop_size), 1);
-                auto available = *budget.function_evaluations > ps
-                    ? *budget.function_evaluations - ps : std::size_t{0};
-                generations = std::min(generations, available / ps);
-            }
-
-            // saturate to unsigned
+            auto generations = clamp_hyper_generations(
+                get_param<std::int64_t>(configured_parameters_, "generations"),
+                budget, static_cast<std::size_t>(pop_size));
             constexpr auto uint_max = static_cast<std::size_t>(std::numeric_limits<unsigned>::max());
             const auto gen_u = static_cast<unsigned>(std::min(generations, uint_max));
 
             pagmo::algorithm algorithm{pagmo::cmaes{
                 gen_u,
-                std::get<double>(configured_parameters_.at("cc")),
-                std::get<double>(configured_parameters_.at("cs")),
-                std::get<double>(configured_parameters_.at("c1")),
-                std::get<double>(configured_parameters_.at("cmu")),
-                std::get<double>(configured_parameters_.at("sigma0")),
-                std::get<double>(configured_parameters_.at("ftol")),
-                std::get<double>(configured_parameters_.at("xtol")),
-                std::get<bool>(configured_parameters_.at("memory")),
-                std::get<bool>(configured_parameters_.at("force_bounds")),
+                get_param<double>(configured_parameters_, "cc"),
+                get_param<double>(configured_parameters_, "cs"),
+                get_param<double>(configured_parameters_, "c1"),
+                get_param<double>(configured_parameters_, "cmu"),
+                get_param<double>(configured_parameters_, "sigma0"),
+                get_param<double>(configured_parameters_, "ftol"),
+                get_param<double>(configured_parameters_, "xtol"),
+                get_param<bool>(configured_parameters_, "memory"),
+                get_param<bool>(configured_parameters_, "force_bounds"),
                 seed32}};
 
             pagmo::population population{tuning_problem, pop_size, derive_seed(seed, 1)};

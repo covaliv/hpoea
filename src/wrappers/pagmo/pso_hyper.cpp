@@ -93,36 +93,24 @@ core::HyperparameterOptimizationResult PagmoPsoHyperOptimizer::optimize(
             std::chrono::steady_clock::time_point start,
             HyperparameterTuningProblem::Context &) -> std::pair<pagmo::population, std::size_t> {
 
-            const auto omega = std::get<double>(configured_parameters_.at("omega"));
-            const auto eta1 = std::get<double>(configured_parameters_.at("eta1"));
-            const auto eta2 = std::get<double>(configured_parameters_.at("eta2"));
-            const auto max_vel = std::get<double>(configured_parameters_.at("max_velocity"));
+            const auto omega = get_param<double>(configured_parameters_, "omega");
+            const auto eta1 = get_param<double>(configured_parameters_, "eta1");
+            const auto eta2 = get_param<double>(configured_parameters_, "eta2");
+            const auto max_vel = get_param<double>(configured_parameters_, "max_velocity");
 
             constexpr auto uint_max = static_cast<std::size_t>(std::numeric_limits<unsigned>::max());
 
-            const auto variant_i64 = std::get<std::int64_t>(configured_parameters_.at("variant"));
             const auto variant = static_cast<unsigned>(
-                std::min(static_cast<std::size_t>(variant_i64), uint_max));
+                std::min(get_param<std::int64_t>(configured_parameters_, "variant"), uint_max));
 
             const auto seed32 = to_seed32(seed);
             const auto dim = bounds.first.size();
             const auto pop_size = static_cast<pagmo::population::size_type>(
                 std::max(dim * 4, dim + 1));
 
-            // compute generations from configured value, clamped by budget
-            auto generations = static_cast<std::size_t>(
-                std::get<std::int64_t>(configured_parameters_.at("generations")));
-            if (budget.generations) {
-                generations = std::min(generations, *budget.generations);
-            }
-            if (budget.function_evaluations) {
-                const auto ps = std::max<std::size_t>(static_cast<std::size_t>(pop_size), 1);
-                auto available = *budget.function_evaluations > ps
-                    ? *budget.function_evaluations - ps : std::size_t{0};
-                generations = std::min(generations, available / ps);
-            }
-
-            // saturate to unsigned
+            auto generations = clamp_hyper_generations(
+                get_param<std::int64_t>(configured_parameters_, "generations"),
+                budget, static_cast<std::size_t>(pop_size));
             const auto gen_u = static_cast<unsigned>(std::min(generations, uint_max));
 
             pagmo::algorithm algorithm{

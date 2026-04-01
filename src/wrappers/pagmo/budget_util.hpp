@@ -1,5 +1,6 @@
 #pragma once
 
+#include "hpoea/core/error_classification.hpp"
 #include "hpoea/core/evolution_algorithm.hpp"
 #include "hpoea/core/parameters.hpp"
 #include "hpoea/core/types.hpp"
@@ -88,6 +89,23 @@ inline std::size_t compute_generations(const core::ParameterSet &params,
     }
 
     return gens;
+}
+
+inline std::size_t clamp_hyper_generations(
+    std::size_t configured_generations,
+    const core::Budget &budget,
+    std::size_t population_size) {
+    const auto ps = std::max(population_size, std::size_t{1});
+    auto generations = configured_generations;
+    if (budget.generations) {
+        generations = std::min(generations, *budget.generations);
+    }
+    if (budget.function_evaluations) {
+        auto available = *budget.function_evaluations > ps
+            ? *budget.function_evaluations - ps : std::size_t{0};
+        generations = std::min(generations, available / ps);
+    }
+    return generations;
 }
 
 struct BudgetFields {
@@ -245,16 +263,9 @@ inline core::OptimizationResult run_population(
             std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         result.message = ex.what();
 
-        if (dynamic_cast<const std::invalid_argument *>(&ex)) {
-            result.status = core::RunStatus::InvalidConfiguration;
-            result.error_info = core::ErrorInfo{"invalid_configuration", "invalid_argument", ex.what()};
-        } else if (dynamic_cast<const EvaluationFailure *>(&ex)) {
-            result.status = core::RunStatus::FailedEvaluation;
-            result.error_info = core::ErrorInfo{"evaluation_failure", "exception", ex.what()};
-        } else {
-            result.status = core::RunStatus::InternalError;
-            result.error_info = core::ErrorInfo{"internal_error", "exception", ex.what()};
-        }
+        const auto classified = core::classify_exception(ex);
+        result.status = classified.status;
+        result.error_info = classified.error_info;
     }
 
     return result;
