@@ -170,15 +170,18 @@ const IEvolutionaryAlgorithmFactory &resolve_algorithm_factory(
     return *owned_factory;
 }
 
-std::mt19937 seed_rng(const std::optional<unsigned long> &random_seed) {
-    std::mt19937 rng;
+std::pair<std::mt19937, unsigned long> seed_rng(const std::optional<unsigned long> &random_seed) {
+    unsigned long actual_seed;
     if (random_seed) {
-        rng.seed(*random_seed);
+        actual_seed = *random_seed;
     } else {
         std::random_device device;
-        rng.seed(device());
+        auto lo = static_cast<unsigned long>(device());
+        auto hi = static_cast<unsigned long>(device());
+        actual_seed = (hi << 32) | lo;
     }
-    return rng;
+    std::mt19937 rng(actual_seed);
+    return {rng, actual_seed};
 }
 
 ParameterSet select_logged_parameters(const HyperparameterTrialRecord &trial_record) {
@@ -290,7 +293,8 @@ ExperimentResult SequentialExperimentManager::run_experiment(const ExperimentCon
 
     optimizer.configure(optimizer_parameters);
 
-    auto rng = seed_rng(config.random_seed);
+    auto [rng, actual_seed] = seed_rng(config.random_seed);
+    result.actual_seed = actual_seed;
 
     for (std::size_t trial = 0; trial < config.trials_per_optimizer; ++trial) {
         const unsigned long optimizer_seed = static_cast<unsigned long>(rng());
@@ -353,7 +357,8 @@ ExperimentResult ParallelExperimentManager::run_experiment(const ExperimentConfi
 
     optimizer.configure(optimizer_parameters);
 
-    auto rng = seed_rng(config.random_seed);
+    auto [rng, actual_seed] = seed_rng(config.random_seed);
+    result.actual_seed = actual_seed;
     std::vector<unsigned long> seeds;
     seeds.reserve(config.trials_per_optimizer);
     for (std::size_t i = 0; i < config.trials_per_optimizer; ++i) {

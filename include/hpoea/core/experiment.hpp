@@ -27,6 +27,7 @@ struct ExperimentConfig {
 struct ExperimentResult {
     std::string experiment_id;
     std::vector<HyperparameterOptimizationResult> optimizer_results;
+    unsigned long actual_seed{0};
 };
 
 class IExperimentManager {

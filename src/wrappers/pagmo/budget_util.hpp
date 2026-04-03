@@ -43,14 +43,23 @@ inline auto get_param(const core::ParameterSet &params, const char *name) {
     }
 }
 
+// splitmix64 finalizer (Vigna 2017, doi:10.1016/j.cam.2016.11.006)
+inline unsigned long splitmix64(unsigned long x) {
+    x ^= x >> 30;
+    x *= 0xbf58476d1ce4e5b9UL;
+    x ^= x >> 27;
+    x *= 0x94d049bb133111ebUL;
+    x ^= x >> 31;
+    return x;
+}
+
 inline unsigned to_seed32(unsigned long seed) {
-    return static_cast<unsigned>(seed & std::numeric_limits<unsigned>::max());
+    return static_cast<unsigned>(splitmix64(seed));
 }
 
 // derive a different seed by mixing with a salt value.
 inline unsigned derive_seed(unsigned long seed, unsigned long salt) {
-    std::mt19937 rng(to_seed32(seed ^ (salt * 2654435761UL)));
-    return rng();
+    return static_cast<unsigned>(splitmix64(seed ^ (salt * 0x9e3779b97f4a7c15UL)));
 }
 
 inline std::size_t read_fevals(const pagmo::population &population,
@@ -221,7 +230,9 @@ inline core::OptimizationResult run_population(
 
         const auto algo_seed = to_seed32(seed);
         const auto pop_seed = derive_seed(seed, 1);
-        pagmo::algorithm algorithm = make_algorithm(static_cast<unsigned>(generations), algo_seed);
+        constexpr auto uint_max = static_cast<std::size_t>(std::numeric_limits<unsigned>::max());
+        pagmo::algorithm algorithm = make_algorithm(
+            static_cast<unsigned>(std::min(generations, uint_max)), algo_seed);
         pagmo::problem pg_problem{ProblemAdapter{problem}};
         pagmo::population population{pg_problem, population_size, pop_seed};
 
@@ -254,9 +265,14 @@ inline core::OptimizationResult run_population(
         result.effective_budget = budget_fields.effective_budget;
         result.effective_parameters = std::move(effective_parameters);
 
-        result.status = core::RunStatus::Success;
-        result.message = "optimization completed";
-        apply_budget_status(budget, result.algorithm_usage, result.status, result.message);
+        if (generations == 0) {
+            result.status = core::RunStatus::BudgetExceeded;
+            result.message = "budget insufficient for any generations; only initial population evaluated";
+        } else {
+            result.status = core::RunStatus::Success;
+            result.message = "optimization completed";
+            apply_budget_status(budget, result.algorithm_usage, result.status, result.message);
+        }
     } catch (const std::exception &ex) {
         const auto end_time = std::chrono::steady_clock::now();
         result.algorithm_usage.wall_time =
