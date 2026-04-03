@@ -9,7 +9,7 @@ namespace hpoea::core {
 HyperparameterOptimizationResult BaselineOptimizer::optimize(
     const IEvolutionaryAlgorithmFactory &algorithm_factory,
     const IProblem &problem,
-    const Budget & /*optimizer_budget*/,
+    const Budget &optimizer_budget,
     const Budget &algorithm_budget,
     unsigned long seed) {
 
@@ -45,15 +45,44 @@ HyperparameterOptimizationResult BaselineOptimizer::optimize(
         result.message = fixed_parameters_.has_value()
             ? "baseline run with fixed parameters"
             : "baseline run with default parameters";
+
+        // check optimizer-level budget (mirrors apply_optimizer_budget_status)
+        if (result.status == RunStatus::Success ||
+            result.status == RunStatus::BudgetExceeded) {
+            if (optimizer_budget.wall_time.has_value() &&
+                result.optimizer_usage.wall_time > *optimizer_budget.wall_time) {
+                result.status = RunStatus::BudgetExceeded;
+                result.message = "wall-time budget exceeded";
+            } else if (optimizer_budget.function_evaluations.has_value() &&
+                       result.optimizer_usage.objective_calls >
+                           *optimizer_budget.function_evaluations) {
+                result.status = RunStatus::BudgetExceeded;
+                result.message = "function-evaluations budget exceeded";
+            } else if (optimizer_budget.generations.has_value() &&
+                       result.optimizer_usage.iterations >
+                           *optimizer_budget.generations) {
+                result.status = RunStatus::BudgetExceeded;
+                result.message = "generation budget exceeded";
+            }
+        }
     } catch (const std::exception &ex) {
         const auto end_time = std::chrono::steady_clock::now();
         result.optimizer_usage.wall_time =
             std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        result.message = ex.what();
 
         const auto classified = classify_exception(ex);
         result.status = classified.status;
         result.error_info = classified.error_info;
+        result.message = ex.what();
+
+        HyperparameterTrialRecord trial;
+        trial.parameters = fixed_parameters_.value_or(ParameterSet{});
+        trial.optimization_result.status = classified.status;
+        trial.optimization_result.error_info = classified.error_info;
+        trial.optimization_result.message = ex.what();
+        trial.optimization_result.algorithm_usage.wall_time =
+            std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        result.trials.push_back(std::move(trial));
     }
 
     return result;
