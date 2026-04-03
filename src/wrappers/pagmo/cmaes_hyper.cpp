@@ -89,7 +89,7 @@ ParameterSpace make_parameter_space() {
 }
 
 AlgorithmIdentity make_identity() {
-    return {"CMAES", "pagmo::cmaes", "2.x"};
+    return {"CMAESHyperOptimizer", "pagmo::cmaes", "2.x"};
 }
 
 } // namespace

@@ -212,6 +212,8 @@ SearchSpace::get_effective_bounds(const ParameterSpace &space) const {
           eb.continuous_bounds = config->continuous_bounds;
         } else if (config->integer_bounds.has_value()) {
           eb.integer_bounds = config->integer_bounds;
+        } else if (descriptor.type == ParameterType::Boolean) {
+          eb.discrete_choice_count = 2;
         } else {
           eb.continuous_bounds = descriptor.continuous_range;
           eb.integer_bounds = descriptor.integer_range;
@@ -219,8 +221,12 @@ SearchSpace::get_effective_bounds(const ParameterSpace &space) const {
       }
     } else {
       eb.mode = SearchMode::optimize;
-      eb.continuous_bounds = descriptor.continuous_range;
-      eb.integer_bounds = descriptor.integer_range;
+      if (descriptor.type == ParameterType::Boolean) {
+        eb.discrete_choice_count = 2;
+      } else {
+        eb.continuous_bounds = descriptor.continuous_range;
+        eb.integer_bounds = descriptor.integer_range;
+      }
     }
 
     result.push_back(eb);

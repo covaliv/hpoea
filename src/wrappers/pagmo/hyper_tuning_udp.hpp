@@ -106,6 +106,10 @@ struct HyperparameterTuningProblem {
         const auto count = (config && !config->discrete_choices.empty())
             ? config->discrete_choices.size()
             : descriptor.categorical_choices.size();
+        if (count == 0) {
+          throw core::ParameterValidationError(
+              "categorical parameter '" + descriptor.name + "' has zero choices");
+        }
         lower.push_back(0.0);
         upper.push_back(static_cast<double>(count - 1));
         break;
