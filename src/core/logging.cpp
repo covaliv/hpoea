@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <iomanip>
 #include <locale>
 #include <sstream>
@@ -39,10 +40,9 @@ std::string escape_json(std::string_view input) {
             break;
         default:
             if (static_cast<unsigned char>(ch) < 0x20) {
-                std::ostringstream oss;
-                oss << "\\u" << std::hex << std::uppercase << std::setfill('0') << std::setw(4)
-                    << static_cast<int>(static_cast<unsigned char>(ch));
-                output += oss.str();
+                char buf[7];
+                std::snprintf(buf, sizeof(buf), "\\u%04X", static_cast<unsigned char>(ch));
+                output += buf;
             } else {
                 output += ch;
             }

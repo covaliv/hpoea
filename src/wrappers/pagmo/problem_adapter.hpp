@@ -50,7 +50,7 @@ public:
                 throw std::invalid_argument("lower bound > upper bound at dimension " + std::to_string(i));
             }
         }
-        return {pagmo::vector_double(lower.begin(), lower.end()), pagmo::vector_double(upper.begin(), upper.end())};
+        return {std::move(lower), std::move(upper)};
     }
 
     [[nodiscard]] bool has_gradient() const { return false; }

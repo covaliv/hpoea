@@ -77,14 +77,12 @@ inline core::HyperparameterOptimizationResult fill_hyper_result(
         } else {
             result.status = core::RunStatus::InternalError;
             result.message = "no valid hyperparameter trial was recorded";
-            const auto &f = population.champion_f();
-            result.best_objective = f.empty() ? std::numeric_limits<double>::max() : f[0];
+            result.best_objective = std::numeric_limits<double>::infinity();
         }
     } else {
         result.status = core::RunStatus::InternalError;
         result.message = "no valid hyperparameter trial was recorded";
-        const auto &f = population.champion_f();
-        result.best_objective = f.empty() ? std::numeric_limits<double>::max() : f[0];
+        result.best_objective = std::numeric_limits<double>::infinity();
     }
 
     result.optimizer_usage.wall_time =
