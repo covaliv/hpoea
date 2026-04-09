@@ -16,7 +16,7 @@ int main() {
     hpoea::wrappers::problems::SphereProblem problem(3);
     hpoea::pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
 
-    // test 1: default parameters - optimizer runs ea with apply_defaults({})
+
     {
         hpoea::core::BaselineOptimizer baseline;
 
@@ -45,14 +45,14 @@ int main() {
         HPOEA_V2_CHECK(runner, result.message == "baseline run with default parameters",
                        "message indicates default parameters");
 
-        // verify the trial parameters are the ea's defaults
+
         const auto defaults = factory.parameter_space().apply_defaults({});
         HPOEA_V2_CHECK(runner,
                        hpoea::tests_v2::parameter_set_equals(result.trials[0].parameters, defaults),
                        "trial parameters match EA defaults");
     }
 
-    // test 2: fixed parameters - optimizer uses caller-specified values
+
     {
         hpoea::core::ParameterSet custom;
         custom.emplace("population_size", std::int64_t{30});
@@ -72,7 +72,7 @@ int main() {
         HPOEA_V2_CHECK(runner, result.trials.size() == 1u,
                        "fixed baseline produces exactly 1 trial");
 
-        // the trial parameters should contain our fixed values (after defaults fill the rest)
+
         const auto &trial_params = result.trials[0].parameters;
         HPOEA_V2_CHECK(runner,
                        hpoea::tests_v2::parameter_value_equals(
@@ -86,7 +86,7 @@ int main() {
                        "message indicates fixed parameters");
     }
 
-    // test 3: clone produces independent copy
+
     {
         hpoea::core::ParameterSet custom;
         custom.emplace("population_size", std::int64_t{25});
@@ -110,7 +110,7 @@ int main() {
                        "cloned baseline preserves fixed parameters");
     }
 
-    // test 4: works with SequentialExperimentManager, produces comparable logs
+
     {
         hpoea::core::BaselineOptimizer baseline;
         hpoea::tests_v2::CapturingLogger logger;
@@ -129,7 +129,7 @@ int main() {
         HPOEA_V2_CHECK(runner, logger.records.size() == 3u,
                        "logger captures 3 run records");
 
-        // all log records should reference the baseline optimizer
+
         bool all_baseline = true;
         for (const auto &record : logger.records) {
             if (!record.hyper_optimizer.has_value() ||
@@ -142,7 +142,7 @@ int main() {
                        "all log records identify Baseline as the hyper optimizer");
     }
 
-    // test 5: reproducibility - same seed produces same result
+
     {
         hpoea::core::BaselineOptimizer b1, b2;
         hpoea::core::Budget algo_budget;
@@ -156,7 +156,7 @@ int main() {
                        "same seed produces identical best_objective");
     }
 
-    // test: evaluation failure produces error status
+
     {
         hpoea::tests_v2::ThrowingProblem throwing_problem;
 
@@ -171,9 +171,9 @@ int main() {
                        "baseline with throwing problem has error message");
     }
 
-    // test: failed baseline produces a trial record for logging
-    // Use a factory whose create() throws to trigger the catch block in BaselineOptimizer::optimize().
-    // (ThrowingProblem is caught inside run_population and returned as an error result, not rethrown.)
+
+
+
     {
         struct ThrowingFactory final : hpoea::core::IEvolutionaryAlgorithmFactory {
             [[nodiscard]] hpoea::core::EvolutionaryAlgorithmPtr create() const override {
@@ -207,7 +207,7 @@ int main() {
         }
     }
 
-    // test: wall_time is populated
+
     {
         hpoea::core::BaselineOptimizer baseline;
         hpoea::core::Budget algo_budget;
@@ -218,7 +218,7 @@ int main() {
                        "baseline wall_time is non-negative");
     }
 
-    // test: seed is recorded in result
+
     {
         hpoea::core::BaselineOptimizer baseline;
         hpoea::core::Budget algo_budget;
@@ -229,13 +229,13 @@ int main() {
                        "baseline records seed in result");
     }
 
-    // test: optimizer_budget function_evaluations is checked
+
     {
         hpoea::core::BaselineOptimizer baseline;
         hpoea::core::Budget algo_budget;
         algo_budget.generations = 5u;
 
-        // baseline runs 1 objective call; budget of 0 must trigger BudgetExceeded
+
         hpoea::core::Budget optimizer_budget;
         optimizer_budget.function_evaluations = 0u;
 
@@ -248,7 +248,7 @@ int main() {
                        "baseline budget-exceeded message is informative");
     }
 
-    // test: optimizer_usage is always populated
+
     {
         hpoea::core::BaselineOptimizer baseline;
         hpoea::core::Budget algo_budget;
