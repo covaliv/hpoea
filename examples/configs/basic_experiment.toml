@@ -1,0 +1,21 @@
+schema_version = 1
+
+[suite]
+name = "basic_experiment"
+output_dir = "results/basic_experiment"
+repetitions = 2
+
+[problems.sphere10]
+type = "sphere"
+
+[algorithms.ea_default]
+type = "research_ea"
+
+[optimizers.optimizer_fast]
+type = "research_optimizer"
+
+[[experiments]]
+id = "sphere_ea"
+problem = "sphere10"
+algorithm = "ea_default"
+optimizer = "optimizer_fast"

@@ -18,6 +18,18 @@ elseif (MSVC)
     add_compile_options(/W4 /permissive-)
 endif ()
 
+include(FetchContent)
+find_package(tomlplusplus CONFIG QUIET)
+if (NOT tomlplusplus_FOUND)
+    FetchContent_Declare(
+        tomlplusplus
+        GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
+        GIT_TAG v3.4.0
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(tomlplusplus)
+endif ()
+
 add_subdirectory(src)
 add_subdirectory(apps)
 

@@ -1,4 +1,7 @@
 set(HPOEA_CORE_SOURCES
+    config/config_parser.cpp
+    config/config_validator.cpp
+    config/suite_expander.cpp
     core/baseline_optimizer.cpp
     core/error_classification.cpp
     core/experiment.cpp
@@ -18,9 +21,13 @@ target_include_directories(hpoea_core
 
 target_compile_features(hpoea_core PUBLIC cxx_std_20)
 
+target_link_libraries(hpoea_core
+    PRIVATE
+        tomlplusplus::tomlplusplus
+)
+
 if (HPOEA_WITH_PAGMO)
     if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/wrappers/pagmo/CMakeLists.txt)
         add_subdirectory(wrappers/pagmo)
     endif ()
 endif ()
-
