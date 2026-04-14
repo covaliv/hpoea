@@ -7,6 +7,9 @@
 
 namespace hpoea::config {
 
+// experimental config api for thesis/demo use
+// names and fields may change before the library api is stabilized
+
 enum class ValidationDiagnosticSeverity {
     Error,
     Warning

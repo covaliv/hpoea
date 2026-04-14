@@ -3,19 +3,38 @@ schema_version = 1
 [suite]
 name = "basic_experiment"
 output_dir = "results/basic_experiment"
+suite_seed = 123456
 repetitions = 2
 
 [problems.sphere10]
 type = "sphere"
+dimension = 10
+lower_bound = -5.0
+upper_bound = 5.0
 
 [algorithms.ea_default]
 type = "research_ea"
+fixed = { population_size = 40, variant = 2, scaling_factor = 0.8, crossover_rate = 0.9 }
+
+[algorithms.ea_default.search.ftol]
+mode = "exclude"
 
 [optimizers.optimizer_fast]
 type = "research_optimizer"
+parameters = { generations = 12, sigma0 = 0.3, ftol = 1e-6, xtol = 1e-6 }
 
 [[experiments]]
 id = "sphere_ea"
 problem = "sphere10"
 algorithm = "ea_default"
 optimizer = "optimizer_fast"
+repetitions = 3
+seed = 9001
+output_name = "sphere_ea"
+
+[experiments.algorithm_budget]
+generations = 25
+
+[experiments.optimizer_budget]
+generations = 8
+function_evaluations = 800

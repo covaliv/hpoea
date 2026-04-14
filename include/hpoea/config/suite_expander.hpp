@@ -7,6 +7,9 @@
 
 namespace hpoea::config {
 
+// experimental config api for thesis/demo use
+// names and fields may change before the library api is stabilized
+
 enum class ExpansionDiagnosticSeverity {
     Error,
     Warning
@@ -19,6 +22,7 @@ struct ExpansionDiagnostic {
 };
 
 struct ExpansionResult {
+    // empty when expansion reports errors
     std::vector<ResolvedRunSpec> runs;
     std::vector<ExpansionDiagnostic> diagnostics;
 
