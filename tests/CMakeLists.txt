@@ -59,6 +59,14 @@ target_compile_definitions(hpoea_config_validator_tests
         HPOEA_PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
 )
 
+hpoea_add_test(hpoea_suite_expander_tests suite_expander_tests.cpp
+    LABEL thesis-core
+    LIBS hpoea_core)
+target_compile_definitions(hpoea_suite_expander_tests
+    PRIVATE
+        HPOEA_PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+)
+
 if (HPOEA_WITH_PAGMO)
     hpoea_add_test(hpoea_problem_adapter_tests problem_adapter_tests.cpp
         LABEL thesis-pagmo

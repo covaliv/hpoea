@@ -1,5 +1,7 @@
 #include "hpoea/config/config_validator.hpp"
 
+#include "hpoea/config/suite_expander.hpp"
+
 #include <cstddef>
 #include <string>
 #include <string_view>
@@ -52,6 +54,7 @@ public:
         index_optimizers();
         validate_experiments();
         validate_algorithms();
+        validate_expansion_plan();
         return result_;
     }
 
@@ -186,6 +189,13 @@ private:
             }
         } else if (spec.mode == SearchParameterMode::Choice && spec.choices.empty()) {
             add_error(join_path(path, "values"), "choice mode requires at least one value");
+        }
+    }
+
+    void validate_expansion_plan() {
+        const auto expansion = hpoea::config::expand_suite_config(config_);
+        for (const auto &diag : expansion.diagnostics) {
+            result_.diagnostics.push_back(ValidationDiagnostic{ValidationDiagnosticSeverity::Error, diag.path, diag.message});
         }
     }
 
