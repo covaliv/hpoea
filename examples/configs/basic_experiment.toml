@@ -12,25 +12,25 @@ dimension = 10
 lower_bound = -5.0
 upper_bound = 5.0
 
-[algorithms.ea_default]
-type = "research_ea"
+[algorithms.de_default]
+type = "de"
 fixed = { population_size = 40, variant = 2, scaling_factor = 0.8, crossover_rate = 0.9 }
 
-[algorithms.ea_default.search.ftol]
+[algorithms.de_default.search.ftol]
 mode = "exclude"
 
-[optimizers.optimizer_fast]
-type = "research_optimizer"
+[optimizers.cmaes_fast]
+type = "cmaes"
 parameters = { generations = 12, sigma0 = 0.3, ftol = 1e-6, xtol = 1e-6 }
 
 [[experiments]]
-id = "sphere_ea"
+id = "sphere_de_cmaes"
 problem = "sphere10"
-algorithm = "ea_default"
-optimizer = "optimizer_fast"
+algorithm = "de_default"
+optimizer = "cmaes_fast"
 repetitions = 3
 seed = 9001
-output_name = "sphere_ea"
+output_name = "sphere_de_cmaes"
 
 [experiments.algorithm_budget]
 generations = 25
