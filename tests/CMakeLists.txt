@@ -72,10 +72,6 @@ target_compile_definitions(hpoea_suite_expander_tests
         HPOEA_PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
 )
 
-hpoea_add_test(hpoea_config_descriptor_tests config_descriptor_tests.cpp
-    LABEL thesis-core
-    LIBS hpoea_core)
-
 if (HPOEA_WITH_PAGMO)
     hpoea_add_test(hpoea_problem_adapter_tests problem_adapter_tests.cpp
         LABEL thesis-pagmo

@@ -1,6 +1,5 @@
 set(HPOEA_CORE_SOURCES
     config/config_parser.cpp
-    config/config_descriptors.cpp
     config/config_validator.cpp
     config/suite_expander.cpp
     core/baseline_optimizer.cpp
@@ -37,3 +36,4 @@ if (HPOEA_WITH_PAGMO)
         add_subdirectory(wrappers/pagmo)
     endif ()
 endif ()
+
