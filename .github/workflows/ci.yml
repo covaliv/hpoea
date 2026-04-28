@@ -18,10 +18,10 @@ jobs:
           sudo apt-get install -y build-essential cmake ninja-build
 
       - name: Configure core test build
-        run: cmake -S . -B build/thesis-core -G Ninja -DHPOEA_BUILD_TESTS=ON
+        run: cmake -S . -B build/hpoea-core -G Ninja -DHPOEA_BUILD_TESTS=ON
 
       - name: Build core test targets
-        run: cmake --build build/thesis-core
+        run: cmake --build build/hpoea-core
 
-      - name: Run thesis-core tests
-        run: ctest --test-dir build/thesis-core -L thesis-core --output-on-failure
+      - name: Run core tests
+        run: ctest --test-dir build/hpoea-core -L hpoea-core --output-on-failure

@@ -10,7 +10,7 @@
 
 namespace hpoea::config {
 
-// experimental config api for thesis/demo use
+// experimental config api for examples and extension use
 // names and fields may change before the library api is stabilized
 
 enum class ParseDiagnosticSeverity {

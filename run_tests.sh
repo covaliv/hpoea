@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-readonly CORE_BUILD_DIR="build/thesis-core"
-readonly PAGMO_BUILD_DIR="build/thesis-pagmo"
+readonly CORE_BUILD_DIR="build/hpoea-core"
+readonly PAGMO_BUILD_DIR="build/hpoea-pagmo"
 
 show_help() {
     cat <<'EOF'
@@ -21,17 +21,17 @@ Examples:
   ./run_tests.sh --with-pagmo
   ./run_tests.sh --with-pagmo --pagmo-dir ~/.local/lib/cmake/pagmo
 
-By default, the script runs only the core build and thesis-core tests.
+By default, the script runs only the core build and core tests.
 Use --with-pagmo to opt into the Pagmo-enabled configure/build/test flow.
 EOF
 }
 
 run_core_suite() {
-    printf '%s\n' '=== Core thesis suite ==='
+    printf '%s\n' '=== Core test suite ==='
     cmake -S . -B "$CORE_BUILD_DIR" -DHPOEA_BUILD_TESTS=ON
     cmake --build "$CORE_BUILD_DIR"
-    ctest --test-dir "$CORE_BUILD_DIR" --show-only -L thesis-core
-    ctest --test-dir "$CORE_BUILD_DIR" -L thesis-core --output-on-failure
+    ctest --test-dir "$CORE_BUILD_DIR" --show-only -L hpoea-core
+    ctest --test-dir "$CORE_BUILD_DIR" -L hpoea-core --output-on-failure
 }
 
 run_pagmo_suite() {
@@ -46,7 +46,7 @@ run_pagmo_suite() {
         cmake_args+=("-DPagmo_DIR=${pagmo_dir}")
     fi
 
-    printf '%s\n' '=== Pagmo thesis suite ==='
+    printf '%s\n' '=== Pagmo test suite ==='
     if ! cmake "${cmake_args[@]}"; then
         cat >&2 <<EOF
 error: failed to configure the Pagmo-enabled build.
@@ -59,8 +59,8 @@ EOF
     fi
 
     cmake --build "$PAGMO_BUILD_DIR"
-    ctest --test-dir "$PAGMO_BUILD_DIR" --show-only -L thesis-pagmo
-    ctest --test-dir "$PAGMO_BUILD_DIR" -L thesis-pagmo --output-on-failure
+    ctest --test-dir "$PAGMO_BUILD_DIR" --show-only -L hpoea-pagmo
+    ctest --test-dir "$PAGMO_BUILD_DIR" -L hpoea-pagmo --output-on-failure
 }
 
 run_pagmo=false
@@ -105,4 +105,4 @@ if [[ "$run_pagmo" == true ]]; then
     run_pagmo_suite
 fi
 
-printf '\n%s\n' '=== Requested thesis suites passed ==='
+printf '\n%s\n' '=== Requested test suites passed ==='

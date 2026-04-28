@@ -1,4 +1,5 @@
 #include "hpoea/core/baseline_optimizer.hpp"
+#include "hpoea/core/budget_checks.hpp"
 #include "hpoea/core/error_classification.hpp"
 
 #include <chrono>
@@ -46,25 +47,11 @@ HyperparameterOptimizationResult BaselineOptimizer::optimize(
             ? "baseline run with fixed parameters"
             : "baseline run with default parameters";
 
-        // check optimizer-level budget (mirrors apply_optimizer_budget_status)
-        if (result.status == RunStatus::Success ||
-            result.status == RunStatus::BudgetExceeded) {
-            if (optimizer_budget.wall_time.has_value() &&
-                result.optimizer_usage.wall_time > *optimizer_budget.wall_time) {
-                result.status = RunStatus::BudgetExceeded;
-                result.message = "wall-time budget exceeded";
-            } else if (optimizer_budget.function_evaluations.has_value() &&
-                       result.optimizer_usage.objective_calls >
-                           *optimizer_budget.function_evaluations) {
-                result.status = RunStatus::BudgetExceeded;
-                result.message = "function-evaluations budget exceeded";
-            } else if (optimizer_budget.generations.has_value() &&
-                       result.optimizer_usage.iterations >
-                           *optimizer_budget.generations) {
-                result.status = RunStatus::BudgetExceeded;
-                result.message = "generation budget exceeded";
-            }
-        }
+        apply_optimizer_budget_status(
+            optimizer_budget,
+            result.optimizer_usage,
+            result.status,
+            result.message);
     } catch (const std::exception &ex) {
         const auto end_time = std::chrono::steady_clock::now();
         result.optimizer_usage.wall_time =

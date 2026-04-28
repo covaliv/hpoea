@@ -94,6 +94,15 @@ int main() {
 
     {
         auto cfg = make_valid_suite();
+        cfg.problems.front().type = "custom_problem";
+        cfg.algorithms.front().type = "custom_algorithm";
+        cfg.optimizers.front().type = "custom_optimizer";
+        const auto result = hpoea::config::validate_suite_config(cfg);
+        HPOEA_V2_CHECK(runner, result.ok(), "validator accepts open custom type ids");
+    }
+
+    {
+        auto cfg = make_valid_suite();
         cfg.schema_version = 2;
         const auto result = hpoea::config::validate_suite_config(cfg);
         HPOEA_V2_CHECK(runner, has_error_path(result, "schema_version"),

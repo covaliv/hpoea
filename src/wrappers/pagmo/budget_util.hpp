@@ -175,33 +175,6 @@ inline void apply_budget_status(const core::Budget &budget,
     }
 }
 
-// check whether an outer hyper-optimizer run exceeded its budget.
-inline void apply_optimizer_budget_status(const core::Budget &budget,
-                                          const core::OptimizerRunUsage &usage,
-                                          core::RunStatus &status,
-                                          std::string &message) {
-    if (status != core::RunStatus::Success &&
-        status != core::RunStatus::BudgetExceeded) {
-        return;
-    }
-    if (budget.wall_time.has_value() && usage.wall_time > *budget.wall_time) {
-        status = core::RunStatus::BudgetExceeded;
-        message = "wall-time budget exceeded";
-        return;
-    }
-    if (budget.function_evaluations.has_value() &&
-        usage.objective_calls > *budget.function_evaluations) {
-        status = core::RunStatus::BudgetExceeded;
-        message = "function-evaluations budget exceeded";
-        return;
-    }
-    if (budget.generations.has_value() && usage.iterations > *budget.generations) {
-        status = core::RunStatus::BudgetExceeded;
-        message = "generation budget exceeded";
-        return;
-    }
-}
-
 template <typename AlgorithmBuilder>
 inline core::OptimizationResult run_population(
     const core::IProblem &problem,

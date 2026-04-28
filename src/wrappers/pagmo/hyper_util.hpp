@@ -1,5 +1,6 @@
 #pragma once
 
+#include "hpoea/core/budget_checks.hpp"
 #include "hpoea/core/error_classification.hpp"
 #include "hyper_tuning_udp.hpp"
 
@@ -154,7 +155,7 @@ core::HyperparameterOptimizationResult run_hyper_optimization(
         result = fill_hyper_result(*ctx, population, actual_iterations,
                                    start_time, end_time, configured_parameters);
         result.seed = seed;
-        apply_optimizer_budget_status(
+        core::apply_optimizer_budget_status(
             optimizer_budget,
             result.optimizer_usage,
             result.status,

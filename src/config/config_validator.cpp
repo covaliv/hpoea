@@ -35,18 +35,6 @@ bool contains(const std::array<std::string_view, Size> &ids,
     return false;
 }
 
-constexpr std::array<std::string_view, 9> core_problem_type_ids{
-    "sphere",
-    "rosenbrock",
-    "rastrigin",
-    "ackley",
-    "griewank",
-    "schwefel",
-    "zakharov",
-    "styblinski_tang",
-    "knapsack"
-};
-
 constexpr std::array<std::string_view, 6> pagmo_algorithm_type_ids{
     "de",
     "pso",
@@ -195,10 +183,7 @@ private:
                                const std::string &path) {
         if (type.empty()) {
             add_error(path, "problem type must not be empty");
-            return;
         }
-        const bool known_core = contains(core_problem_type_ids, type);
-        (void) known_core;
     }
 
     void validate_algorithms() {
@@ -221,12 +206,9 @@ private:
             add_error(path, "algorithm type must not be empty");
             return;
         }
-        const bool known_pagmo = contains(pagmo_algorithm_type_ids, type);
-        if (known_pagmo && !build_has_pagmo()) {
+        if (contains(pagmo_algorithm_type_ids, type) && !build_has_pagmo()) {
             add_error(path, "algorithm type requires a Pagmo-enabled build: " + type);
-            return;
         }
-        (void) known_pagmo;
     }
 
     void validate_optimizers() {
@@ -242,12 +224,9 @@ private:
             add_error(path, "optimizer type must not be empty");
             return;
         }
-        const bool known_pagmo = contains(pagmo_optimizer_type_ids, type);
-        if (known_pagmo && !build_has_pagmo()) {
+        if (contains(pagmo_optimizer_type_ids, type) && !build_has_pagmo()) {
             add_error(path, "optimizer type requires a Pagmo-enabled build: " + type);
-            return;
         }
-        (void) known_pagmo;
     }
 
     void validate_experiments() {

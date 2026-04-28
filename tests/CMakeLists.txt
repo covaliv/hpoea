@@ -20,31 +20,31 @@ set(HPOEA_PAGMO_TEST_PRIVATE_INCLUDES
 )
 
 hpoea_add_test(hpoea_types_budget_tests types_budget_tests.cpp
-    LABEL thesis-core
+    LABEL hpoea-core
     LIBS hpoea_core)
 
 hpoea_add_test(hpoea_parameter_space_tests parameter_space_tests.cpp
-    LABEL thesis-core
+    LABEL hpoea-core
     LIBS hpoea_core)
 
 hpoea_add_test(hpoea_search_space_tests search_space_tests.cpp
-    LABEL thesis-core
+    LABEL hpoea-core
     LIBS hpoea_core)
 
 hpoea_add_test(hpoea_logging_tests logging_tests.cpp
-    LABEL thesis-core
+    LABEL hpoea-core
     LIBS hpoea_core)
 
 hpoea_add_test(hpoea_benchmark_problem_tests benchmark_problem_tests.cpp
-    LABEL thesis-core
+    LABEL hpoea-core
     LIBS hpoea_core)
 
 hpoea_add_test(hpoea_transform_bounds_tests transform_bounds_tests.cpp
-    LABEL thesis-core
+    LABEL hpoea-core
     LIBS hpoea_core)
 
 hpoea_add_test(hpoea_config_parser_tests config_parser_tests.cpp
-    LABEL thesis-core
+    LABEL hpoea-core
     LIBS hpoea_core)
 target_compile_definitions(hpoea_config_parser_tests
     PRIVATE
@@ -52,7 +52,7 @@ target_compile_definitions(hpoea_config_parser_tests
 )
 
 hpoea_add_test(hpoea_config_validator_tests config_validator_tests.cpp
-    LABEL thesis-core
+    LABEL hpoea-core
     LIBS hpoea_core)
 target_compile_definitions(hpoea_config_validator_tests
     PRIVATE
@@ -61,11 +61,11 @@ target_compile_definitions(hpoea_config_validator_tests
 
 if (HPOEA_WITH_PAGMO)
     set_tests_properties(hpoea_config_validator_tests
-        PROPERTIES LABELS "thesis-core;thesis-pagmo")
+        PROPERTIES LABELS "hpoea-core;hpoea-pagmo")
 endif ()
 
 hpoea_add_test(hpoea_suite_expander_tests suite_expander_tests.cpp
-    LABEL thesis-core
+    LABEL hpoea-core
     LIBS hpoea_core)
 target_compile_definitions(hpoea_suite_expander_tests
     PRIVATE
@@ -74,33 +74,33 @@ target_compile_definitions(hpoea_suite_expander_tests
 
 if (HPOEA_WITH_PAGMO)
     hpoea_add_test(hpoea_problem_adapter_tests problem_adapter_tests.cpp
-        LABEL thesis-pagmo
+        LABEL hpoea-pagmo
         LIBS hpoea_pagmo hpoea_core
         INCLUDE_DIRS ${HPOEA_PAGMO_TEST_PRIVATE_INCLUDES})
 
     hpoea_add_test(hpoea_budget_util_tests budget_util_tests.cpp
-        LABEL thesis-pagmo
+        LABEL hpoea-pagmo
         LIBS hpoea_pagmo hpoea_core
         INCLUDE_DIRS ${HPOEA_PAGMO_TEST_PRIVATE_INCLUDES})
 
     hpoea_add_test(hpoea_evolutionary_algorithms_tests evolutionary_algorithms_tests.cpp
-        LABEL thesis-pagmo
+        LABEL hpoea-pagmo
         LIBS hpoea_pagmo hpoea_core)
 
     hpoea_add_test(hpoea_hyper_optimizer_tests hyper_optimizer_tests.cpp
-        LABEL thesis-pagmo
+        LABEL hpoea-pagmo
         LIBS hpoea_pagmo hpoea_core)
 
     hpoea_add_test(hpoea_experiment_manager_tests experiment_manager_tests.cpp
-        LABEL thesis-pagmo
+        LABEL hpoea-pagmo
         LIBS hpoea_pagmo hpoea_core)
 
     hpoea_add_test(hpoea_baseline_optimizer_tests baseline_optimizer_tests.cpp
-        LABEL thesis-pagmo
+        LABEL hpoea-pagmo
         LIBS hpoea_pagmo hpoea_core)
 
     hpoea_add_test(hpoea_hyper_tuning_udp_tests hyper_tuning_udp_tests.cpp
-        LABEL thesis-pagmo
+        LABEL hpoea-pagmo
         LIBS hpoea_pagmo hpoea_core
         INCLUDE_DIRS ${HPOEA_PAGMO_TEST_PRIVATE_INCLUDES})
 endif ()

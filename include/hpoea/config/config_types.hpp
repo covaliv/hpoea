@@ -13,7 +13,7 @@
 
 namespace hpoea::config {
 
-// experimental config api for thesis/demo use
+// experimental config api for examples and extension use
 // names and fields may change before the library api is stabilized
 
 using ScalarConfigValue = core::ParameterValue;
@@ -50,6 +50,10 @@ struct BudgetConfig {
     std::optional<std::size_t> function_evaluations;
 };
 
+// Type identifiers are open strings so projects can define custom adapters.
+// Validation rejects empty identifiers and known Pagmo-backed identifiers when
+// Pagmo support is disabled, but it does not require custom identifiers to be
+// registered in this module.
 struct ProblemSpec {
     std::string id;
     std::string type;
