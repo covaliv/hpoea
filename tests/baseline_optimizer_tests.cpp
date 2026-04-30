@@ -8,13 +8,31 @@
 #include "hpoea/wrappers/problems/benchmark_problems.hpp"
 
 #include <cmath>
+#include <optional>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 int main() {
     hpoea::tests_v2::TestRunner runner;
     hpoea::wrappers::problems::SphereProblem problem(3);
     hpoea::pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
+
+    auto check_error_info = [&](const std::optional<hpoea::core::ErrorInfo> &error_info,
+                                const std::string &expected_category,
+                                const std::string &expected_code,
+                                const std::string &expected_detail,
+                                const std::string &label) {
+        HPOEA_V2_CHECK(runner, error_info.has_value(), label + " has error_info");
+        if (error_info.has_value()) {
+            HPOEA_V2_CHECK(runner, error_info->category == expected_category,
+                           label + " error_info category");
+            HPOEA_V2_CHECK(runner, error_info->code == expected_code,
+                           label + " error_info code");
+            HPOEA_V2_CHECK(runner, error_info->detail == expected_detail,
+                           label + " error_info detail");
+        }
+    };
 
 
     {
@@ -36,13 +54,15 @@ int main() {
                        "default baseline produces exactly 1 trial");
         HPOEA_V2_CHECK(runner, result.status == hpoea::core::RunStatus::Success,
                        "baseline run returns Success");
+        HPOEA_V2_CHECK(runner, !result.error_info.has_value(),
+                       "successful baseline has no error_info");
         HPOEA_V2_CHECK(runner, std::isfinite(result.best_objective),
                        "baseline produces a finite best objective");
         HPOEA_V2_CHECK(runner, !result.best_parameters.empty(),
                        "baseline populates best_parameters");
         HPOEA_V2_CHECK(runner, result.optimizer_usage.objective_calls == 1,
                        "baseline reports exactly one objective call");
-        HPOEA_V2_CHECK(runner, result.message == "baseline run with default parameters",
+        HPOEA_V2_CHECK(runner, result.message.find("default") != std::string::npos,
                        "message indicates default parameters");
 
 
@@ -82,7 +102,7 @@ int main() {
                        hpoea::tests_v2::parameter_value_equals(
                            trial_params.at("crossover_rate"), hpoea::core::ParameterValue{0.9}),
                        "fixed crossover_rate=0.9 is preserved");
-        HPOEA_V2_CHECK(runner, result.message == "baseline run with fixed parameters",
+        HPOEA_V2_CHECK(runner, result.message.find("fixed") != std::string::npos,
                        "message indicates fixed parameters");
     }
 
@@ -165,13 +185,23 @@ int main() {
         algo_budget.generations = 3u;
 
         auto result = baseline.optimize(factory, throwing_problem, {}, algo_budget, 42);
-        HPOEA_V2_CHECK(runner, result.status != hpoea::core::RunStatus::Success,
-                       "baseline with throwing problem returns non-Success status");
-        HPOEA_V2_CHECK(runner, !result.message.empty(),
-                       "baseline with throwing problem has error message");
+        HPOEA_V2_CHECK(runner, result.status == hpoea::core::RunStatus::FailedEvaluation,
+                       "baseline with throwing problem maps to FailedEvaluation");
+        HPOEA_V2_CHECK(runner, result.message == "intentional test failure",
+                       "baseline with throwing problem preserves error message");
+        check_error_info(result.error_info, "evaluation_failure", "exception",
+                         "intentional test failure", "throwing problem result");
+        HPOEA_V2_CHECK(runner, result.trials.size() == 1u,
+                       "baseline with throwing problem produces one trial record");
+        if (!result.trials.empty()) {
+            HPOEA_V2_CHECK(runner,
+                           result.trials[0].optimization_result.status == hpoea::core::RunStatus::FailedEvaluation,
+                           "throwing problem trial carries FailedEvaluation");
+            check_error_info(result.trials[0].optimization_result.error_info,
+                             "evaluation_failure", "exception", "intentional test failure",
+                             "throwing problem trial");
+        }
     }
-
-
 
 
     {
@@ -196,14 +226,50 @@ int main() {
 
         auto result = baseline.optimize(throwing_factory, problem, {}, algo_budget, 42);
 
-        HPOEA_V2_CHECK(runner, result.status != hpoea::core::RunStatus::Success,
-                       "failed baseline should not report Success");
-        HPOEA_V2_CHECK(runner, !result.trials.empty(),
-                       "failed baseline must still produce a trial record for logging");
+        HPOEA_V2_CHECK(runner, result.status == hpoea::core::RunStatus::InternalError,
+                       "failed factory maps to InternalError");
+        HPOEA_V2_CHECK(runner, result.message == "factory create() failed intentionally",
+                       "failed factory preserves error message");
+        check_error_info(result.error_info, "internal_error", "exception",
+                         "factory create() failed intentionally", "throwing factory result");
+        HPOEA_V2_CHECK(runner, result.trials.size() == 1u,
+                       "failed baseline must still produce one trial record for logging");
         if (!result.trials.empty()) {
             HPOEA_V2_CHECK(runner,
-                           result.trials[0].optimization_result.status != hpoea::core::RunStatus::Success,
-                           "trial record should carry the error status");
+                           result.trials[0].optimization_result.status == hpoea::core::RunStatus::InternalError,
+                           "trial record should carry InternalError");
+            check_error_info(result.trials[0].optimization_result.error_info,
+                             "internal_error", "exception", "factory create() failed intentionally",
+                             "throwing factory trial");
+        }
+    }
+
+
+    {
+        hpoea::core::ParameterSet custom;
+        custom.emplace("does_not_exist", std::int64_t{1});
+        hpoea::core::BaselineOptimizer baseline(custom);
+        hpoea::core::Budget algo_budget;
+        algo_budget.generations = 3u;
+
+        auto result = baseline.optimize(factory, problem, {}, algo_budget, 42);
+
+        HPOEA_V2_CHECK(runner, result.status == hpoea::core::RunStatus::InvalidConfiguration,
+                       "unknown fixed baseline parameter maps to InvalidConfiguration");
+        HPOEA_V2_CHECK(runner, result.message.find("does_not_exist") != std::string::npos,
+                       "unknown fixed baseline parameter message identifies parameter");
+        check_error_info(result.error_info, "invalid_configuration", "parameter_validation",
+                         "unknown parameter: does_not_exist", "unknown fixed parameter result");
+        HPOEA_V2_CHECK(runner, result.trials.size() == 1u,
+                       "unknown fixed parameter still produces one trial record");
+        if (!result.trials.empty()) {
+            HPOEA_V2_CHECK(runner,
+                           result.trials[0].optimization_result.status == hpoea::core::RunStatus::InvalidConfiguration,
+                           "unknown fixed parameter trial carries InvalidConfiguration");
+            check_error_info(result.trials[0].optimization_result.error_info,
+                             "invalid_configuration", "parameter_validation",
+                             "unknown parameter: does_not_exist",
+                             "unknown fixed parameter trial");
         }
     }
 
@@ -243,9 +309,10 @@ int main() {
 
         HPOEA_V2_CHECK(runner, result.status == hpoea::core::RunStatus::BudgetExceeded,
                        "baseline respects optimizer_budget.function_evaluations");
-        HPOEA_V2_CHECK(runner, result.message.find("function-evaluations") != std::string::npos
-                            || result.message.find("budget") != std::string::npos,
+        HPOEA_V2_CHECK(runner, result.message.find("budget") != std::string::npos,
                        "baseline budget-exceeded message is informative");
+        HPOEA_V2_CHECK(runner, !result.error_info.has_value(),
+                       "baseline optimizer budget exceeded does not synthesize error_info");
     }
 
 

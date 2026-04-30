@@ -36,16 +36,25 @@ HyperparameterOptimizationResult BaselineOptimizer::optimize(
         result.trials.push_back(std::move(trial));
 
         const auto &best = result.trials.front();
+        const auto &optimization_result = best.optimization_result;
         result.best_parameters = best.parameters;
-        result.best_objective = best.optimization_result.best_fitness;
-        result.status = best.optimization_result.status;
+        result.best_objective = optimization_result.best_fitness;
+        result.status = optimization_result.status;
         result.optimizer_usage.objective_calls = 1;
         result.optimizer_usage.iterations = 0;
         result.optimizer_usage.wall_time =
             std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        result.message = fixed_parameters_.has_value()
+        const auto baseline_message = fixed_parameters_.has_value()
             ? "baseline run with fixed parameters"
             : "baseline run with default parameters";
+        if (result.status == RunStatus::Success) {
+            result.message = baseline_message;
+        } else {
+            result.message = optimization_result.message.empty()
+                ? baseline_message
+                : optimization_result.message;
+            result.error_info = optimization_result.error_info;
+        }
 
         apply_optimizer_budget_status(
             optimizer_budget,
