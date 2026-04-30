@@ -10,13 +10,88 @@
 #include "hyper_tuning_udp.hpp"
 
 #include <cmath>
+#include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace {
+
+class StubAlgorithm final : public hpoea::core::IEvolutionaryAlgorithm {
+public:
+    StubAlgorithm(hpoea::core::ParameterSpace parameter_space,
+                  hpoea::core::RunStatus status,
+                  double best_fitness)
+        : parameter_space_(std::move(parameter_space)),
+          status_(status),
+          best_fitness_(best_fitness) {}
+
+    [[nodiscard]] const hpoea::core::AlgorithmIdentity &identity() const noexcept override {
+        return identity_;
+    }
+
+    [[nodiscard]] const hpoea::core::ParameterSpace &parameter_space() const noexcept override {
+        return parameter_space_;
+    }
+
+    void configure(const hpoea::core::ParameterSet &parameters) override {
+        configured_ = parameter_space_.apply_defaults(parameters);
+    }
+
+    [[nodiscard]] hpoea::core::OptimizationResult run(const hpoea::core::IProblem &problem,
+                                                      const hpoea::core::Budget &budget,
+                                                      unsigned long seed) override {
+        hpoea::core::OptimizationResult result;
+        result.status = status_;
+        result.best_fitness = best_fitness_;
+        result.best_solution.assign(problem.dimension(), 0.0);
+        result.algorithm_usage.function_evaluations = 1u;
+        result.algorithm_usage.generations = budget.generations.value_or(0u);
+        result.effective_parameters = configured_;
+        result.seed = seed;
+        result.message = "stub algorithm run";
+        return result;
+    }
+
+    [[nodiscard]] std::unique_ptr<hpoea::core::IEvolutionaryAlgorithm> clone() const override {
+        return std::make_unique<StubAlgorithm>(*this);
+    }
+
+private:
+    hpoea::core::AlgorithmIdentity identity_{"StubAlgorithm", "tests", "1.0"};
+    hpoea::core::ParameterSpace parameter_space_{};
+    hpoea::core::ParameterSet configured_{};
+    hpoea::core::RunStatus status_{hpoea::core::RunStatus::Success};
+    double best_fitness_{0.0};
+};
+
+struct StubFactory final : public hpoea::core::IEvolutionaryAlgorithmFactory {
+    hpoea::core::ParameterSpace space;
+    hpoea::core::AlgorithmIdentity id{"StubFactory", "tests", "1.0"};
+    hpoea::core::RunStatus status{hpoea::core::RunStatus::Success};
+    double best_fitness{0.0};
+
+    [[nodiscard]] hpoea::core::EvolutionaryAlgorithmPtr create() const override {
+        return std::make_unique<StubAlgorithm>(space, status, best_fitness);
+    }
+
+    [[nodiscard]] const hpoea::core::ParameterSpace &parameter_space() const noexcept override {
+        return space;
+    }
+
+    [[nodiscard]] const hpoea::core::AlgorithmIdentity &identity() const noexcept override {
+        return id;
+    }
+};
+
+}
 
 int main() {
     hpoea::tests_v2::TestRunner runner;
 
     hpoea::wrappers::problems::SphereProblem problem(3);
     hpoea::pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
-
 
     auto search = std::make_shared<hpoea::core::SearchSpace>();
     search->fix("population_size", std::int64_t{20});
@@ -37,7 +112,6 @@ int main() {
 
     HPOEA_V2_CHECK(runner, expected_dim == 6u,
                    "bounds dimension excludes fixed parameters but includes all tunable descriptors");
-
 
     pagmo::vector_double candidate(expected_dim, 0.0);
     candidate[0] = 0.5;
@@ -60,7 +134,6 @@ int main() {
         HPOEA_V2_CHECK(runner, cr >= 0.8 && cr <= 0.9, "crossover_rate clamped to bounds");
     }
 
-
     bool threw = false;
     try {
         (void)udp.fitness({0.1});
@@ -68,21 +141,6 @@ int main() {
         threw = true;
     }
     HPOEA_V2_CHECK(runner, threw, "candidate dimension mismatch throws");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     {
         hpoea::pagmo_wrappers::PagmoDifferentialEvolutionFactory de_factory;
@@ -126,16 +184,9 @@ int main() {
                        "bounds_verification: xtol bounds [0, 1]");
     }
 
-
-
-
-
-
-
     {
         hpoea::pagmo_wrappers::PagmoDifferentialEvolutionFactory de_factory;
         hpoea::wrappers::problems::SphereProblem sphere2(2);
-
 
         auto ss = std::make_shared<hpoea::core::SearchSpace>();
         ss->fix("population_size", std::int64_t{10});
@@ -144,7 +195,6 @@ int main() {
         ss->fix("generations", std::int64_t{2});
         ss->fix("ftol", 1e-6);
         ss->fix("xtol", 1e-6);
-
 
         auto c = std::make_shared<hpoea::pagmo_wrappers::HyperparameterTuningProblem::Context>();
         c->factory = &de_factory;
@@ -159,7 +209,6 @@ int main() {
         HPOEA_V2_CHECK(runner, int_bounds.first.size() == 1u,
                        "integer_snapping: single dimension for variant");
 
-
         c->trials->clear();
         (void)udp_int.fitness({2.3});
         HPOEA_V2_CHECK(runner, !c->trials->empty(), "integer_snapping: trial recorded for 2.3");
@@ -168,7 +217,6 @@ int main() {
             HPOEA_V2_CHECK(runner, val == 2, "integer_snapping: 2.3 rounds to 2");
         }
 
-
         c->trials->clear();
         (void)udp_int.fitness({2.5});
         HPOEA_V2_CHECK(runner, !c->trials->empty(), "integer_snapping: trial recorded for 2.5");
@@ -176,7 +224,6 @@ int main() {
             auto val = std::get<std::int64_t>(c->trials->back().parameters.at("variant"));
             HPOEA_V2_CHECK(runner, val == 3, "integer_snapping: 2.5 rounds to 3 (half away from zero)");
         }
-
 
         c->trials->clear();
         (void)udp_int.fitness({2.7});
@@ -187,17 +234,9 @@ int main() {
         }
     }
 
-
-
-
-
-
     {
         hpoea::pagmo_wrappers::PagmoSelfAdaptiveDEFactory sade_factory;
         hpoea::wrappers::problems::SphereProblem sphere2(2);
-
-
-
 
         auto ss = std::make_shared<hpoea::core::SearchSpace>();
         ss->fix("population_size", std::int64_t{10});
@@ -206,7 +245,6 @@ int main() {
         ss->fix("variant_adptv", std::int64_t{1});
         ss->fix("ftol", 1e-6);
         ss->fix("xtol", 1e-6);
-
 
         auto c = std::make_shared<hpoea::pagmo_wrappers::HyperparameterTuningProblem::Context>();
         c->factory = &sade_factory;
@@ -225,7 +263,6 @@ int main() {
                        hpoea::tests_v2::nearly_equal(bool_bounds.second[0], 1.0),
                        "boolean_threshold: memory bounds [0, 1]");
 
-
         c->trials->clear();
         (void)udp_bool.fitness({0.49});
         HPOEA_V2_CHECK(runner, !c->trials->empty(), "boolean_threshold: trial recorded for 0.49");
@@ -234,7 +271,6 @@ int main() {
             HPOEA_V2_CHECK(runner, val == false, "boolean_threshold: 0.49 decodes to false");
         }
 
-
         c->trials->clear();
         (void)udp_bool.fitness({0.5});
         HPOEA_V2_CHECK(runner, !c->trials->empty(), "boolean_threshold: trial recorded for 0.5");
@@ -242,7 +278,6 @@ int main() {
             auto val = std::get<bool>(c->trials->back().parameters.at("memory"));
             HPOEA_V2_CHECK(runner, val == false, "boolean_threshold: 0.5 decodes to false (strictly greater)");
         }
-
 
         c->trials->clear();
         (void)udp_bool.fitness({0.51});
@@ -253,15 +288,9 @@ int main() {
         }
     }
 
-
-
-
-
-
     {
         hpoea::pagmo_wrappers::PagmoDifferentialEvolutionFactory de_factory;
         hpoea::wrappers::problems::SphereProblem sphere2(2);
-
 
         auto ctx_all = std::make_shared<hpoea::pagmo_wrappers::HyperparameterTuningProblem::Context>();
         ctx_all->factory = &de_factory;
@@ -270,13 +299,11 @@ int main() {
         ctx_all->base_seed = 99UL;
         ctx_all->trials = std::make_shared<std::vector<hpoea::core::HyperparameterTrialRecord>>();
 
-
         hpoea::pagmo_wrappers::HyperparameterTuningProblem udp_all(ctx_all);
         auto bounds_all = udp_all.get_bounds();
         const auto dim_all = bounds_all.first.size();
         HPOEA_V2_CHECK(runner, dim_all == 7u,
                        "fixed_excluded: baseline dimension is 7 (all DE descriptors)");
-
 
         auto ss_fix = std::make_shared<hpoea::core::SearchSpace>();
         ss_fix->fix("variant", std::int64_t{5});
@@ -294,13 +321,6 @@ int main() {
         const auto dim_fix = bounds_fix.first.size();
         HPOEA_V2_CHECK(runner, dim_fix == dim_all - 1,
                        "fixed_excluded: fixing one param reduces dimension by 1");
-
-
-
-
-
-
-
 
         pagmo::vector_double cand_fix(dim_fix);
         cand_fix[0] = 10.0;
@@ -322,11 +342,6 @@ int main() {
                            "fixed_excluded: fixed variant value is 5");
         }
     }
-
-
-
-
-
 
     {
         hpoea::pagmo_wrappers::PagmoDifferentialEvolutionFactory de_factory;
@@ -366,7 +381,6 @@ int main() {
                        nearly_equal(log_bounds.second[0], 0.0, 1e-9),
                        "log_transform: upper bound is log10(1.0) = 0.0");
 
-
         c->trials->clear();
         (void)udp_log.fitness({-1.0});
         HPOEA_V2_CHECK(runner, !c->trials->empty(),
@@ -377,11 +391,6 @@ int main() {
                            "log_transform: candidate -1.0 decodes to scaling_factor=0.1");
         }
     }
-
-
-
-
-
 
     {
 
@@ -408,7 +417,6 @@ int main() {
             }
         };
 
-
         {
             CatFactory fac({"a"});
             hpoea::wrappers::problems::SphereProblem sphere(2);
@@ -430,7 +438,6 @@ int main() {
                            "categorical_bounds: single choice => bounds [0, 0]");
         }
 
-
         {
             CatFactory fac({"a", "b", "c"});
             hpoea::wrappers::problems::SphereProblem sphere(2);
@@ -450,6 +457,121 @@ int main() {
                            hpoea::tests_v2::nearly_equal(cat_bounds.first[0], 0.0) &&
                            hpoea::tests_v2::nearly_equal(cat_bounds.second[0], 2.0),
                            "categorical_bounds: three choices => bounds [0, 2]");
+        }
+
+        {
+            StubFactory fac;
+            hpoea::core::ParameterDescriptor desc;
+            desc.name = "strategy";
+            desc.type = hpoea::core::ParameterType::Categorical;
+            desc.categorical_choices = {"a", "b", "c"};
+            fac.space.add_descriptor(desc);
+
+            hpoea::wrappers::problems::SphereProblem sphere(2);
+            auto c = std::make_shared<hpoea::pagmo_wrappers::HyperparameterTuningProblem::Context>();
+            c->factory = &fac;
+            c->problem = &sphere;
+            c->algorithm_budget.generations = 1;
+            c->base_seed = 0UL;
+            c->trials = std::make_shared<std::vector<hpoea::core::HyperparameterTrialRecord>>();
+
+            hpoea::pagmo_wrappers::HyperparameterTuningProblem udp_cat(c);
+            const auto fitness = udp_cat.fitness({1.4});
+
+            HPOEA_V2_CHECK(runner, fitness.size() == 1u && hpoea::tests_v2::nearly_equal(fitness[0], 0.0),
+                           "categorical_decode: fitness returns stub objective");
+            HPOEA_V2_CHECK(runner, !c->trials->empty(),
+                           "categorical_decode: trial recorded");
+            if (!c->trials->empty()) {
+                const auto strategy = std::get<std::string>(c->trials->back().parameters.at("strategy"));
+                HPOEA_V2_CHECK(runner, strategy == "b",
+                               "categorical_decode: candidate 1.4 rounds to choice 'b'");
+            }
+        }
+
+        {
+            StubFactory fac;
+            fac.status = hpoea::core::RunStatus::FailedEvaluation;
+            fac.best_fitness = std::numeric_limits<double>::infinity();
+            hpoea::core::ParameterDescriptor desc;
+            desc.name = "population_size";
+            desc.type = hpoea::core::ParameterType::Integer;
+            desc.integer_range = hpoea::core::IntegerRange{1, 10};
+            desc.default_value = std::int64_t{5};
+            fac.space.add_descriptor(desc);
+
+            hpoea::wrappers::problems::SphereProblem sphere(2);
+            auto c = std::make_shared<hpoea::pagmo_wrappers::HyperparameterTuningProblem::Context>();
+            c->factory = &fac;
+            c->problem = &sphere;
+            c->algorithm_budget.generations = 1;
+            c->base_seed = 123UL;
+            c->trials = std::make_shared<std::vector<hpoea::core::HyperparameterTrialRecord>>();
+
+            hpoea::pagmo_wrappers::HyperparameterTuningProblem udp_failure(c);
+            const auto fitness = udp_failure.fitness({5.0});
+
+            HPOEA_V2_CHECK(runner, fitness.size() == 1u && std::isfinite(fitness[0]) && fitness[0] > 1e12,
+                           "failed_trial_penalty: non-finite failed run returns large finite penalty fitness");
+            HPOEA_V2_CHECK(runner, !c->trials->empty(),
+                           "failed_trial_penalty: failed trial still recorded");
+            if (!c->trials->empty()) {
+                HPOEA_V2_CHECK(runner,
+                               c->trials->back().optimization_result.status == hpoea::core::RunStatus::FailedEvaluation,
+                               "failed_trial_penalty: trial status preserved");
+                HPOEA_V2_CHECK(runner,
+                               c->trials->back().optimization_result.seed ==
+                                   hpoea::pagmo_wrappers::derive_seed(123UL, 0UL),
+                               "failed_trial_penalty: trial records deterministic evaluation seed");
+            }
+        }
+
+        {
+            StubFactory fac;
+            hpoea::core::ParameterDescriptor fixed_desc;
+            fixed_desc.name = "generations";
+            fixed_desc.type = hpoea::core::ParameterType::Integer;
+            fixed_desc.integer_range = hpoea::core::IntegerRange{1, 10};
+            fixed_desc.default_value = std::int64_t{4};
+            fac.space.add_descriptor(fixed_desc);
+
+            hpoea::core::ParameterDescriptor tuned_desc;
+            tuned_desc.name = "scaling_factor";
+            tuned_desc.type = hpoea::core::ParameterType::Continuous;
+            tuned_desc.continuous_range = hpoea::core::ContinuousRange{0.1, 1.0};
+            tuned_desc.default_value = 0.5;
+            fac.space.add_descriptor(tuned_desc);
+
+            auto ss = std::make_shared<hpoea::core::SearchSpace>();
+            hpoea::core::ParameterConfig fixed_without_value;
+            fixed_without_value.mode = hpoea::core::SearchMode::fixed;
+            ss->set("generations", fixed_without_value);
+
+            hpoea::wrappers::problems::SphereProblem sphere(2);
+            auto c = std::make_shared<hpoea::pagmo_wrappers::HyperparameterTuningProblem::Context>();
+            c->factory = &fac;
+            c->problem = &sphere;
+            c->algorithm_budget.generations = 1;
+            c->base_seed = 55UL;
+            c->trials = std::make_shared<std::vector<hpoea::core::HyperparameterTrialRecord>>();
+            c->search_space = ss;
+
+            hpoea::pagmo_wrappers::HyperparameterTuningProblem udp_default(c);
+            const auto bounds = udp_default.get_bounds();
+            HPOEA_V2_CHECK(runner, bounds.first.size() == 1u && bounds.second.size() == 1u,
+                           "default_fixed_parameter: missing fixed value is not optimized");
+
+            (void)udp_default.fitness({0.25});
+            HPOEA_V2_CHECK(runner, !c->trials->empty(),
+                           "default_fixed_parameter: trial recorded");
+            if (!c->trials->empty()) {
+                const auto generations = std::get<std::int64_t>(c->trials->back().parameters.at("generations"));
+                const auto scaling = std::get<double>(c->trials->back().parameters.at("scaling_factor"));
+                HPOEA_V2_CHECK(runner, generations == 4,
+                               "default_fixed_parameter: descriptor default fills missing fixed value");
+                HPOEA_V2_CHECK(runner, hpoea::tests_v2::nearly_equal(scaling, 0.25),
+                               "default_fixed_parameter: optimized parameter still decodes from candidate");
+            }
         }
 
     }

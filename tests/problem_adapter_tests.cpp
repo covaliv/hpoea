@@ -5,6 +5,9 @@
 #include "problem_adapter.hpp"
 
 #include <limits>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace {
 
@@ -23,6 +26,60 @@ public:
     [[nodiscard]] double evaluate(const std::vector<double> &) const override {
         return std::numeric_limits<double>::quiet_NaN();
     }
+
+private:
+    hpoea::core::ProblemMetadata metadata_{};
+};
+
+class MismatchedBoundsProblem final : public hpoea::core::IProblem {
+public:
+    MismatchedBoundsProblem() {
+        metadata_.id = "mismatched_bounds";
+        metadata_.family = "tests";
+        metadata_.description = "returns mismatched bounds";
+    }
+
+    [[nodiscard]] const hpoea::core::ProblemMetadata &metadata() const noexcept override { return metadata_; }
+    [[nodiscard]] std::size_t dimension() const override { return 2; }
+    [[nodiscard]] std::vector<double> lower_bounds() const override { return {0.0}; }
+    [[nodiscard]] std::vector<double> upper_bounds() const override { return {1.0, 2.0}; }
+    [[nodiscard]] double evaluate(const std::vector<double> &) const override { return 0.0; }
+
+private:
+    hpoea::core::ProblemMetadata metadata_{};
+};
+
+class WrongDimensionBoundsProblem final : public hpoea::core::IProblem {
+public:
+    WrongDimensionBoundsProblem() {
+        metadata_.id = "wrong_dimension_bounds";
+        metadata_.family = "tests";
+        metadata_.description = "returns same-sized bounds with wrong dimension";
+    }
+
+    [[nodiscard]] const hpoea::core::ProblemMetadata &metadata() const noexcept override { return metadata_; }
+    [[nodiscard]] std::size_t dimension() const override { return 3; }
+    [[nodiscard]] std::vector<double> lower_bounds() const override { return {0.0, 0.0}; }
+    [[nodiscard]] std::vector<double> upper_bounds() const override { return {1.0, 1.0}; }
+    [[nodiscard]] double evaluate(const std::vector<double> &) const override { return 0.0; }
+
+private:
+    hpoea::core::ProblemMetadata metadata_{};
+};
+
+class InvertedBoundsProblem final : public hpoea::core::IProblem {
+public:
+    InvertedBoundsProblem() {
+        metadata_.id = "inverted_bounds";
+        metadata_.family = "tests";
+        metadata_.description = "returns lower bound greater than upper bound";
+    }
+
+    [[nodiscard]] const hpoea::core::ProblemMetadata &metadata() const noexcept override { return metadata_; }
+    [[nodiscard]] std::size_t dimension() const override { return 2; }
+    [[nodiscard]] std::vector<double> lower_bounds() const override { return {0.0, 2.0}; }
+    [[nodiscard]] std::vector<double> upper_bounds() const override { return {1.0, 1.0}; }
+    [[nodiscard]] double evaluate(const std::vector<double> &) const override { return 0.0; }
 
 private:
     hpoea::core::ProblemMetadata metadata_{};
@@ -53,7 +110,6 @@ private:
 int main() {
     hpoea::tests_v2::TestRunner runner;
 
-
     {
         hpoea::pagmo_wrappers::ProblemAdapter adapter;
         bool threw = false;
@@ -64,7 +120,6 @@ int main() {
         }
         HPOEA_V2_CHECK(runner, threw, "default adapter throws without problem");
     }
-
 
     {
         hpoea::wrappers::problems::SphereProblem sphere(2);
@@ -79,6 +134,41 @@ int main() {
                        "adapter name matches problem id");
     }
 
+    {
+        MismatchedBoundsProblem problem;
+        hpoea::pagmo_wrappers::ProblemAdapter adapter(problem);
+        bool threw = false;
+        try {
+            (void)adapter.get_bounds();
+        } catch (const std::invalid_argument &) {
+            threw = true;
+        }
+        HPOEA_V2_CHECK(runner, threw, "adapter rejects lower/upper bounds size mismatch");
+    }
+
+    {
+        WrongDimensionBoundsProblem problem;
+        hpoea::pagmo_wrappers::ProblemAdapter adapter(problem);
+        bool threw = false;
+        try {
+            (void)adapter.get_bounds();
+        } catch (const std::invalid_argument &) {
+            threw = true;
+        }
+        HPOEA_V2_CHECK(runner, threw, "adapter rejects bounds dimension mismatch");
+    }
+
+    {
+        InvertedBoundsProblem problem;
+        hpoea::pagmo_wrappers::ProblemAdapter adapter(problem);
+        bool threw = false;
+        try {
+            (void)adapter.get_bounds();
+        } catch (const std::invalid_argument &) {
+            threw = true;
+        }
+        HPOEA_V2_CHECK(runner, threw, "adapter rejects inverted bounds");
+    }
 
     {
         NaNProblem nan_problem;
@@ -91,7 +181,6 @@ int main() {
         }
         HPOEA_V2_CHECK(runner, threw, "adapter converts NaN to EvaluationFailure");
     }
-
 
     {
         class InfProblem final : public hpoea::core::IProblem {
@@ -124,7 +213,6 @@ int main() {
         HPOEA_V2_CHECK(runner, threw, "adapter converts inf to EvaluationFailure");
     }
 
-
     {
         class NegInfProblem final : public hpoea::core::IProblem {
         public:
@@ -155,7 +243,6 @@ int main() {
         }
         HPOEA_V2_CHECK(runner, threw, "adapter converts -inf to EvaluationFailure");
     }
-
 
     {
         ThrowingProblem throwing_problem;

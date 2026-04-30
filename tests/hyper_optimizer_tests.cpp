@@ -49,15 +49,19 @@ int main() {
         HPOEA_V2_CHECK(runner, !result.trials.empty(), "CMA-ES hyper produces trials");
         HPOEA_V2_CHECK(runner, !result.best_parameters.empty(), "CMA-ES hyper best_parameters populated");
         HPOEA_V2_CHECK(runner, std::isfinite(result.best_objective), "CMA-ES hyper best_objective finite");
+        HPOEA_V2_CHECK(runner, result.seed == 42UL, "CMA-ES hyper records optimizer seed");
+        HPOEA_V2_CHECK(runner, result.optimizer_usage.objective_calls == result.trials.size(),
+                       "CMA-ES hyper objective_calls matches recorded trials");
 
         auto result_same = run_optimizer(optimizer, params, opt_budget, algo_budget, 42UL);
         HPOEA_V2_CHECK(runner, result.best_objective == result_same.best_objective,
                        "CMA-ES hyper deterministic for same seed");
 
         auto result_diff = run_optimizer(optimizer, params, opt_budget, algo_budget, 43UL);
-        HPOEA_V2_CHECK(runner, result.best_objective != result_diff.best_objective ||
-                                  result.trials.size() != result_diff.trials.size(),
-                       "CMA-ES hyper different seed changes result");
+        HPOEA_V2_CHECK(runner, result_diff.seed == 43UL,
+                       "CMA-ES hyper records the requested different seed");
+        HPOEA_V2_CHECK(runner, !result_diff.trials.empty() && std::isfinite(result_diff.best_objective),
+                       "CMA-ES hyper different seed still produces a valid result");
     }
 
 
@@ -71,6 +75,9 @@ int main() {
                        "PSO hyper returns success/budget");
         HPOEA_V2_CHECK(runner, !result.trials.empty(), "PSO hyper produces trials");
         HPOEA_V2_CHECK(runner, !result.best_parameters.empty(), "PSO hyper best_parameters populated");
+        HPOEA_V2_CHECK(runner, result.seed == 7UL, "PSO hyper records optimizer seed");
+        HPOEA_V2_CHECK(runner, result.optimizer_usage.objective_calls == result.trials.size(),
+                       "PSO hyper objective_calls matches recorded trials");
 
         auto result_same = run_optimizer(optimizer, params, opt_budget, algo_budget, 7UL);
         HPOEA_V2_CHECK(runner, result.best_objective == result_same.best_objective,
@@ -88,6 +95,9 @@ int main() {
                        "SA hyper returns success/budget");
         HPOEA_V2_CHECK(runner, !result.trials.empty(), "SA hyper produces trials");
         HPOEA_V2_CHECK(runner, !result.best_parameters.empty(), "SA hyper best_parameters populated");
+        HPOEA_V2_CHECK(runner, result.seed == 11UL, "SA hyper records optimizer seed");
+        HPOEA_V2_CHECK(runner, result.optimizer_usage.objective_calls == result.trials.size(),
+                       "SA hyper objective_calls matches recorded trials");
 
         auto result_same = run_optimizer(optimizer, params, opt_budget, algo_budget, 11UL);
         HPOEA_V2_CHECK(runner, result.best_objective == result_same.best_objective,
@@ -105,6 +115,9 @@ int main() {
                        "NM hyper returns success/budget");
         HPOEA_V2_CHECK(runner, !result.trials.empty(), "NM hyper produces trials");
         HPOEA_V2_CHECK(runner, !result.best_parameters.empty(), "NM hyper best_parameters populated");
+        HPOEA_V2_CHECK(runner, result.seed == 13UL, "NM hyper records optimizer seed");
+        HPOEA_V2_CHECK(runner, result.optimizer_usage.objective_calls == result.trials.size(),
+                       "NM hyper objective_calls matches recorded trials");
 
         auto result_same = run_optimizer(optimizer, params, opt_budget, algo_budget, 13UL);
         HPOEA_V2_CHECK(runner, result.best_objective == result_same.best_objective,

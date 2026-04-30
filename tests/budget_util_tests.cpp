@@ -12,6 +12,7 @@
 #include "budget_util.hpp"
 
 #include <cmath>
+#include <initializer_list>
 #include <limits>
 #include <string>
 
@@ -21,8 +22,49 @@ using hpoea::core::OptimizerRunUsage;
 using hpoea::core::ParameterSet;
 using hpoea::core::RunStatus;
 
+namespace {
+
+bool contains_all(const std::string &text, std::initializer_list<const char *> needles) {
+    for (const auto *needle : needles) {
+        if (text.find(needle) == std::string::npos) {
+            return false;
+        }
+    }
+    return true;
+}
+
+}
+
 int main() {
     hpoea::tests_v2::TestRunner runner;
+
+    auto check_algorithm_budget_status = [&](const Budget &budget,
+                                             const AlgorithmRunUsage &usage,
+                                             RunStatus initial_status,
+                                             const std::string &initial_message,
+                                             RunStatus expected_status,
+                                             const std::string &expected_message,
+                                             const std::string &label) {
+        auto status = initial_status;
+        std::string message = initial_message;
+        hpoea::pagmo_wrappers::apply_budget_status(budget, usage, status, message);
+        HPOEA_V2_CHECK(runner, status == expected_status, label + ": status");
+        HPOEA_V2_CHECK(runner, message == expected_message, label + ": message");
+    };
+
+    auto check_optimizer_budget_status = [&](const Budget &budget,
+                                             const OptimizerRunUsage &usage,
+                                             RunStatus initial_status,
+                                             const std::string &initial_message,
+                                             RunStatus expected_status,
+                                             const std::string &expected_message,
+                                             const std::string &label) {
+        auto status = initial_status;
+        std::string message = initial_message;
+        hpoea::core::apply_optimizer_budget_status(budget, usage, status, message);
+        HPOEA_V2_CHECK(runner, status == expected_status, label + ": status");
+        HPOEA_V2_CHECK(runner, message == expected_message, label + ": message");
+    };
 
 
     {
@@ -89,35 +131,6 @@ int main() {
 
 
     {
-        Budget budget;
-        budget.function_evaluations = 10u;
-        AlgorithmRunUsage usage;
-        usage.function_evaluations = 11u;
-        auto status = hpoea::core::RunStatus::Success;
-        std::string message = "ok";
-        hpoea::pagmo_wrappers::apply_budget_status(budget, usage, status, message);
-        HPOEA_V2_CHECK(runner, status == hpoea::core::RunStatus::BudgetExceeded,
-                       "apply_budget_status sets BudgetExceeded when fevals exceed");
-        HPOEA_V2_CHECK(runner, message.find("function-evaluations") != std::string::npos,
-                       "apply_budget_status sets feval message");
-    }
-
-    {
-        Budget budget;
-        budget.wall_time = std::chrono::milliseconds{1};
-        AlgorithmRunUsage usage;
-        usage.wall_time = std::chrono::milliseconds{2};
-        auto status = hpoea::core::RunStatus::Success;
-        std::string message;
-        hpoea::pagmo_wrappers::apply_budget_status(budget, usage, status, message);
-        HPOEA_V2_CHECK(runner, status == hpoea::core::RunStatus::BudgetExceeded,
-                       "apply_budget_status sets BudgetExceeded when wall time exceeded");
-        HPOEA_V2_CHECK(runner, message == "wall-time budget exceeded",
-                       "apply_budget_status sets wall-time message");
-    }
-
-
-    {
         hpoea::wrappers::problems::SphereProblem problem(3);
         hpoea::pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
         auto algo = factory.create();
@@ -160,9 +173,8 @@ int main() {
                            result.algorithm_usage.function_evaluations > 0u,
                            label + " fevals not zero");
             HPOEA_V2_CHECK(runner,
-                           result.status == hpoea::core::RunStatus::Success ||
-                               result.status == hpoea::core::RunStatus::BudgetExceeded,
-                           label + " status is Success or BudgetExceeded");
+                           result.status == hpoea::core::RunStatus::Success,
+                           label + " status is Success after generation clamp");
             HPOEA_V2_CHECK(runner,
                            std::isfinite(result.best_fitness),
                            label + " best_fitness is finite");
@@ -228,8 +240,8 @@ int main() {
         } catch (const std::invalid_argument &ex) {
             threw = true;
 
-            HPOEA_V2_CHECK(runner, std::string(ex.what()).find("missing") != std::string::npos,
-                           "get_param missing: message contains param name");
+            HPOEA_V2_CHECK(runner, contains_all(ex.what(), {"missing"}),
+                           "get_param missing message identifies missing parameter");
         }
         HPOEA_V2_CHECK(runner, threw, "get_param<int64_t> throws on missing param");
     }
@@ -241,8 +253,10 @@ int main() {
         bool threw = false;
         try {
             (void)hpoea::pagmo_wrappers::get_param<std::int64_t>(params, "pop");
-        } catch (const std::invalid_argument &) {
+        } catch (const std::invalid_argument &ex) {
             threw = true;
+            HPOEA_V2_CHECK(runner, contains_all(ex.what(), {"pop", "type"}),
+                           "get_param<int64_t> type mismatch message identifies parameter and type");
         }
         HPOEA_V2_CHECK(runner, threw, "get_param<int64_t> throws on type mismatch");
     }
@@ -256,8 +270,8 @@ int main() {
             (void)hpoea::pagmo_wrappers::get_param<std::int64_t>(params, "pop");
         } catch (const std::invalid_argument &ex) {
             threw = true;
-            HPOEA_V2_CHECK(runner, std::string(ex.what()).find("negative") != std::string::npos,
-                           "get_param negative: message mentions negative");
+            HPOEA_V2_CHECK(runner, contains_all(ex.what(), {"pop", "negative"}),
+                           "get_param negative message identifies parameter and negative value");
         }
         HPOEA_V2_CHECK(runner, threw, "get_param<int64_t> throws on negative value");
     }
@@ -277,8 +291,10 @@ int main() {
         bool threw = false;
         try {
             (void)hpoea::pagmo_wrappers::get_param<double>(params, "rate");
-        } catch (const std::invalid_argument &) {
+        } catch (const std::invalid_argument &ex) {
             threw = true;
+            HPOEA_V2_CHECK(runner, contains_all(ex.what(), {"rate", "type"}),
+                           "get_param<double> type mismatch message identifies parameter and type");
         }
         HPOEA_V2_CHECK(runner, threw, "get_param<double> throws on type mismatch");
     }
@@ -298,8 +314,10 @@ int main() {
         bool threw = false;
         try {
             (void)hpoea::pagmo_wrappers::get_param<bool>(params, "flag");
-        } catch (const std::invalid_argument &) {
+        } catch (const std::invalid_argument &ex) {
             threw = true;
+            HPOEA_V2_CHECK(runner, contains_all(ex.what(), {"flag", "type"}),
+                           "get_param<bool> type mismatch message identifies parameter and type");
         }
         HPOEA_V2_CHECK(runner, threw, "get_param<bool> throws on type mismatch");
     }
@@ -307,146 +325,49 @@ int main() {
 
     {
         Budget budget;
-        budget.function_evaluations = 10u;
-        OptimizerRunUsage usage;
-        usage.objective_calls = 11u;
-        auto status = RunStatus::Success;
-        std::string message;
-        hpoea::core::apply_optimizer_budget_status(budget, usage, status, message);
-        HPOEA_V2_CHECK(runner, status == RunStatus::BudgetExceeded,
-                       "apply_optimizer_budget_status: fevals exceeded");
-    }
-
-
-    {
-        Budget budget;
-        budget.wall_time = std::chrono::milliseconds{10};
-        OptimizerRunUsage usage;
-        usage.wall_time = std::chrono::milliseconds{11};
-        auto status = RunStatus::Success;
-        std::string message;
-        hpoea::core::apply_optimizer_budget_status(budget, usage, status, message);
-        HPOEA_V2_CHECK(runner, status == RunStatus::BudgetExceeded,
-                       "apply_optimizer_budget_status: wall_time exceeded");
-    }
-
-
-    {
-        Budget budget;
-        budget.generations = 5u;
-        OptimizerRunUsage usage;
-        usage.iterations = 6u;
-        auto status = RunStatus::Success;
-        std::string message;
-        hpoea::core::apply_optimizer_budget_status(budget, usage, status, message);
-        HPOEA_V2_CHECK(runner, status == RunStatus::BudgetExceeded,
-                       "apply_optimizer_budget_status: generations exceeded");
-    }
-
-
-    {
-        Budget budget;
         budget.function_evaluations = 100u;
-        budget.generations = 10u;
-        OptimizerRunUsage usage;
-        usage.objective_calls = 50u;
-        usage.iterations = 5u;
-        auto status = RunStatus::Success;
-        std::string message = "ok";
-        hpoea::core::apply_optimizer_budget_status(budget, usage, status, message);
-        HPOEA_V2_CHECK(runner, status == RunStatus::Success,
-                       "apply_optimizer_budget_status: within budget remains Success");
+        AlgorithmRunUsage usage;
+        usage.function_evaluations = 100u;
+        check_algorithm_budget_status(budget, usage, RunStatus::Success, "ok",
+                                      RunStatus::Success, "ok",
+                                      "algorithm fevals exactly at budget");
+
+        usage.function_evaluations = 101u;
+        check_algorithm_budget_status(budget, usage, RunStatus::Success, "ok",
+                                      RunStatus::BudgetExceeded, "function-evaluations budget exceeded",
+                                      "algorithm fevals over budget");
     }
 
 
     {
         Budget budget;
-        budget.function_evaluations = 1u;
-        OptimizerRunUsage usage;
-        usage.objective_calls = 100u;
-        auto status = RunStatus::FailedEvaluation;
-        std::string message = "eval failed";
-        hpoea::core::apply_optimizer_budget_status(budget, usage, status, message);
-        HPOEA_V2_CHECK(runner, status == RunStatus::FailedEvaluation,
-                       "apply_optimizer_budget_status: non-Success passes through");
-        HPOEA_V2_CHECK(runner, message == "eval failed",
-                       "apply_optimizer_budget_status: message unchanged on passthrough");
+        budget.wall_time = std::chrono::milliseconds{500};
+        AlgorithmRunUsage usage;
+        usage.wall_time = std::chrono::milliseconds{500};
+        check_algorithm_budget_status(budget, usage, RunStatus::Success, "ok",
+                                      RunStatus::Success, "ok",
+                                      "algorithm wall time exactly at budget");
+
+        usage.wall_time = std::chrono::milliseconds{501};
+        check_algorithm_budget_status(budget, usage, RunStatus::Success, "ok",
+                                      RunStatus::BudgetExceeded, "wall-time budget exceeded",
+                                      "algorithm wall time over budget");
     }
 
 
     {
+        Budget budget;
+        budget.generations = 10u;
+        AlgorithmRunUsage usage;
+        usage.generations = 10u;
+        check_algorithm_budget_status(budget, usage, RunStatus::Success, "ok",
+                                      RunStatus::Success, "ok",
+                                      "algorithm generations exactly at budget");
 
-        {
-            Budget budget;
-            budget.function_evaluations = 100u;
-            AlgorithmRunUsage usage;
-            usage.function_evaluations = 100u;
-            auto status = RunStatus::Success;
-            std::string message = "ok";
-            hpoea::pagmo_wrappers::apply_budget_status(budget, usage, status, message);
-            HPOEA_V2_CHECK(runner, status == RunStatus::Success,
-                           "apply_budget_status: fevals exactly at budget remains Success");
-        }
-
-        {
-            Budget budget;
-            budget.function_evaluations = 100u;
-            AlgorithmRunUsage usage;
-            usage.function_evaluations = 101u;
-            auto status = RunStatus::Success;
-            std::string message = "ok";
-            hpoea::pagmo_wrappers::apply_budget_status(budget, usage, status, message);
-            HPOEA_V2_CHECK(runner, status == RunStatus::BudgetExceeded,
-                           "apply_budget_status: fevals at budget+1 becomes BudgetExceeded");
-        }
-
-        {
-            Budget budget;
-            budget.wall_time = std::chrono::milliseconds{500};
-            AlgorithmRunUsage usage;
-            usage.wall_time = std::chrono::milliseconds{500};
-            auto status = RunStatus::Success;
-            std::string message = "ok";
-            hpoea::pagmo_wrappers::apply_budget_status(budget, usage, status, message);
-            HPOEA_V2_CHECK(runner, status == RunStatus::Success,
-                           "apply_budget_status: wall_time exactly at budget remains Success");
-        }
-
-        {
-            Budget budget;
-            budget.wall_time = std::chrono::milliseconds{500};
-            AlgorithmRunUsage usage;
-            usage.wall_time = std::chrono::milliseconds{501};
-            auto status = RunStatus::Success;
-            std::string message = "ok";
-            hpoea::pagmo_wrappers::apply_budget_status(budget, usage, status, message);
-            HPOEA_V2_CHECK(runner, status == RunStatus::BudgetExceeded,
-                           "apply_budget_status: wall_time at budget+1 becomes BudgetExceeded");
-        }
-
-        {
-            Budget budget;
-            budget.generations = 10u;
-            AlgorithmRunUsage usage;
-            usage.generations = 10u;
-            auto status = RunStatus::Success;
-            std::string message = "ok";
-            hpoea::pagmo_wrappers::apply_budget_status(budget, usage, status, message);
-            HPOEA_V2_CHECK(runner, status == RunStatus::Success,
-                           "apply_budget_status: generations exactly at budget remains Success");
-        }
-
-        {
-            Budget budget;
-            budget.generations = 10u;
-            AlgorithmRunUsage usage;
-            usage.generations = 11u;
-            auto status = RunStatus::Success;
-            std::string message = "ok";
-            hpoea::pagmo_wrappers::apply_budget_status(budget, usage, status, message);
-            HPOEA_V2_CHECK(runner, status == RunStatus::BudgetExceeded,
-                           "apply_budget_status: generations at budget+1 becomes BudgetExceeded");
-        }
+        usage.generations = 11u;
+        check_algorithm_budget_status(budget, usage, RunStatus::Success, "ok",
+                                      RunStatus::BudgetExceeded, "generation budget exceeded",
+                                      "algorithm generations over budget");
     }
 
 
@@ -455,162 +376,68 @@ int main() {
         budget.function_evaluations = 1u;
         AlgorithmRunUsage usage;
         usage.function_evaluations = 999u;
-        auto status = RunStatus::InvalidConfiguration;
-        std::string message = "bad config";
-        hpoea::pagmo_wrappers::apply_budget_status(budget, usage, status, message);
-        HPOEA_V2_CHECK(runner, status == RunStatus::InvalidConfiguration,
-                       "apply_budget_status: InvalidConfiguration passes through unchanged");
-        HPOEA_V2_CHECK(runner, message == "bad config",
-                       "apply_budget_status: message unchanged on non-Success passthrough");
+        check_algorithm_budget_status(budget, usage, RunStatus::InvalidConfiguration, "bad config",
+                                      RunStatus::InvalidConfiguration, "bad config",
+                                      "algorithm non-success status passes through");
     }
 
 
     {
-        hpoea::core::ParameterSet params;
-        params.emplace("x", 1.5);
-        bool threw = false;
-        try { (void)hpoea::pagmo_wrappers::get_param<std::int64_t>(params, "x"); }
-        catch (const std::invalid_argument &) { threw = true; }
-        HPOEA_V2_CHECK(runner, threw, "get_param throws on type mismatch");
-    }
-
-
-    {
-        hpoea::core::ParameterSet params;
-        bool threw = false;
-        try { (void)hpoea::pagmo_wrappers::get_param<double>(params, "missing"); }
-        catch (const std::invalid_argument &) { threw = true; }
-        HPOEA_V2_CHECK(runner, threw, "get_param throws on missing parameter");
-    }
-
-
-    {
-        hpoea::core::ParameterSet params;
-        params.emplace("n", std::int64_t{-5});
-        bool threw = false;
-        try { (void)hpoea::pagmo_wrappers::get_param<std::int64_t>(params, "n"); }
-        catch (const std::invalid_argument &) { threw = true; }
-        HPOEA_V2_CHECK(runner, threw, "get_param rejects negative int64");
-    }
-
-
-    {
-        hpoea::core::ParameterSet params;
-        params.emplace("n", std::int64_t{42});
-        auto result = hpoea::pagmo_wrappers::get_param<std::int64_t>(params, "n");
-        HPOEA_V2_CHECK(runner, result == 42u, "get_param returns correct size_t for int64");
-    }
-
-
-    {
-        hpoea::core::ParameterSet params;
-        params.emplace("x", 3.14);
-        auto result = hpoea::pagmo_wrappers::get_param<double>(params, "x");
-        HPOEA_V2_CHECK(runner, std::abs(result - 3.14) < 1e-10, "get_param returns correct double");
-    }
-
-
-    {
-        hpoea::core::Budget budget;
-        budget.generations = 10u;
-        hpoea::core::OptimizerRunUsage usage;
-        usage.iterations = 10u;
-        auto status = hpoea::core::RunStatus::Success;
-        std::string message = "ok";
-        hpoea::core::apply_optimizer_budget_status(budget, usage, status, message);
-        HPOEA_V2_CHECK(runner, status == hpoea::core::RunStatus::Success,
-                       "optimizer budget: usage == limit is Success");
-    }
-
-
-    {
-        hpoea::core::Budget budget;
-        budget.generations = 10u;
-        hpoea::core::OptimizerRunUsage usage;
-        usage.iterations = 11u;
-        auto status = hpoea::core::RunStatus::Success;
-        std::string message = "ok";
-        hpoea::core::apply_optimizer_budget_status(budget, usage, status, message);
-        HPOEA_V2_CHECK(runner, status == hpoea::core::RunStatus::BudgetExceeded,
-                       "optimizer budget: usage > limit is BudgetExceeded");
-    }
-
-
-    {
-        hpoea::core::Budget budget;
+        Budget budget;
         budget.function_evaluations = 100u;
-        hpoea::core::OptimizerRunUsage usage;
+        OptimizerRunUsage usage;
         usage.objective_calls = 100u;
-        auto status = hpoea::core::RunStatus::Success;
-        std::string message = "ok";
-        hpoea::core::apply_optimizer_budget_status(budget, usage, status, message);
-        HPOEA_V2_CHECK(runner, status == hpoea::core::RunStatus::Success,
-                       "optimizer budget: fevals == limit is Success");
-    }
+        check_optimizer_budget_status(budget, usage, RunStatus::Success, "ok",
+                                      RunStatus::Success, "ok",
+                                      "optimizer fevals exactly at budget");
 
-
-    {
-        hpoea::core::Budget budget;
-        budget.function_evaluations = 100u;
-        hpoea::core::OptimizerRunUsage usage;
         usage.objective_calls = 101u;
-        auto status = hpoea::core::RunStatus::Success;
-        std::string message = "ok";
-        hpoea::core::apply_optimizer_budget_status(budget, usage, status, message);
-        HPOEA_V2_CHECK(runner, status == hpoea::core::RunStatus::BudgetExceeded,
-                       "optimizer budget: fevals > limit is BudgetExceeded");
+        check_optimizer_budget_status(budget, usage, RunStatus::Success, "ok",
+                                      RunStatus::BudgetExceeded, "function-evaluations budget exceeded",
+                                      "optimizer fevals over budget");
     }
 
 
     {
-        hpoea::core::Budget budget;
-        budget.generations = 10u;
-        hpoea::core::OptimizerRunUsage usage;
-        usage.iterations = 100u;
-        auto status = hpoea::core::RunStatus::InternalError;
-        std::string message = "error";
-        hpoea::core::apply_optimizer_budget_status(budget, usage, status, message);
-        HPOEA_V2_CHECK(runner, status == hpoea::core::RunStatus::InternalError,
-                       "optimizer budget: non-Success status preserved");
+        Budget budget;
+        budget.wall_time = std::chrono::milliseconds{10};
+        OptimizerRunUsage usage;
+        usage.wall_time = std::chrono::milliseconds{10};
+        check_optimizer_budget_status(budget, usage, RunStatus::Success, "ok",
+                                      RunStatus::Success, "ok",
+                                      "optimizer wall time exactly at budget");
+
+        usage.wall_time = std::chrono::milliseconds{11};
+        check_optimizer_budget_status(budget, usage, RunStatus::Success, "ok",
+                                      RunStatus::BudgetExceeded, "wall-time budget exceeded",
+                                      "optimizer wall time over budget");
     }
 
 
     {
-        hpoea::core::Budget budget;
+        Budget budget;
         budget.generations = 10u;
-        hpoea::core::AlgorithmRunUsage usage;
-        usage.generations = 10u;
-        auto status = hpoea::core::RunStatus::Success;
-        std::string message = "ok";
-        hpoea::pagmo_wrappers::apply_budget_status(budget, usage, status, message);
-        HPOEA_V2_CHECK(runner, status == hpoea::core::RunStatus::Success,
-                       "budget: usage == limit is Success");
+        OptimizerRunUsage usage;
+        usage.iterations = 10u;
+        check_optimizer_budget_status(budget, usage, RunStatus::Success, "ok",
+                                      RunStatus::Success, "ok",
+                                      "optimizer generations exactly at budget");
+
+        usage.iterations = 11u;
+        check_optimizer_budget_status(budget, usage, RunStatus::Success, "ok",
+                                      RunStatus::BudgetExceeded, "generation budget exceeded",
+                                      "optimizer generations over budget");
     }
 
 
     {
-        hpoea::core::Budget budget;
-        budget.generations = 10u;
-        hpoea::core::AlgorithmRunUsage usage;
-        usage.generations = 11u;
-        auto status = hpoea::core::RunStatus::Success;
-        std::string message = "ok";
-        hpoea::pagmo_wrappers::apply_budget_status(budget, usage, status, message);
-        HPOEA_V2_CHECK(runner, status == hpoea::core::RunStatus::BudgetExceeded,
-                       "budget: usage > limit is BudgetExceeded");
-    }
-
-
-    {
-        hpoea::core::Budget budget;
-        budget.generations = 10u;
-        hpoea::core::AlgorithmRunUsage usage;
-        usage.generations = 100u;
-        auto status = hpoea::core::RunStatus::FailedEvaluation;
-        std::string message = "error";
-        hpoea::pagmo_wrappers::apply_budget_status(budget, usage, status, message);
-        HPOEA_V2_CHECK(runner, status == hpoea::core::RunStatus::FailedEvaluation,
-                       "budget: FailedEvaluation preserved");
+        Budget budget;
+        budget.function_evaluations = 1u;
+        OptimizerRunUsage usage;
+        usage.objective_calls = 100u;
+        check_optimizer_budget_status(budget, usage, RunStatus::FailedEvaluation, "eval failed",
+                                      RunStatus::FailedEvaluation, "eval failed",
+                                      "optimizer non-success status passes through");
     }
 
 

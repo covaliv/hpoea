@@ -6,9 +6,12 @@
 #include "hpoea/wrappers/pagmo/de_algorithm.hpp"
 #include "hpoea/wrappers/problems/benchmark_problems.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -29,6 +32,7 @@ public:
         return parameter_space_;
     }
     [[nodiscard]] hpoea::core::HyperparameterOptimizerPtr clone() const override {
+        ++(*clone_count_);
         return std::make_unique<DummyOptimizer>(*this);
     }
     void configure(const hpoea::core::ParameterSet &parameters) override {
@@ -41,6 +45,11 @@ public:
         const hpoea::core::Budget &optimizer_budget,
         const hpoea::core::Budget &algorithm_budget,
         unsigned long seed) override {
+        {
+            std::scoped_lock lock(*observed_seed_mutex_);
+            observed_optimizer_seeds_->push_back(seed);
+        }
+
         auto algo = factory.create();
         hpoea::core::ParameterSet algo_params;
         algo_params.emplace("population_size", std::int64_t{20});
@@ -60,10 +69,20 @@ public:
         return out;
     }
 
+    [[nodiscard]] std::size_t clone_count() const noexcept { return *clone_count_; }
+
+    [[nodiscard]] std::vector<unsigned long> observed_optimizer_seeds() const {
+        std::scoped_lock lock(*observed_seed_mutex_);
+        return *observed_optimizer_seeds_;
+    }
+
 private:
     hpoea::core::AlgorithmIdentity identity_{};
     hpoea::core::ParameterSpace parameter_space_{};
     hpoea::core::ParameterSet configured_{};
+    std::shared_ptr<std::size_t> clone_count_{std::make_shared<std::size_t>(0)};
+    std::shared_ptr<std::vector<unsigned long>> observed_optimizer_seeds_{std::make_shared<std::vector<unsigned long>>()};
+    std::shared_ptr<std::mutex> observed_seed_mutex_{std::make_shared<std::mutex>()};
 };
 
 }
@@ -178,19 +197,35 @@ int main() {
         config.algorithm_budget.generations = 2u;
         config.optimizer_budget.generations = 1u;
 
+        const auto clones_before = optimizer.clone_count();
+        const auto observed_before = optimizer.observed_optimizer_seeds().size();
+
         hpoea::core::ParallelExperimentManager manager(2);
         auto result = manager.run_experiment(config, optimizer, factory, problem, logger);
         HPOEA_V2_CHECK(runner, result.optimizer_results.size() == config.trials_per_optimizer,
                        "parallel manager returns correct number of results");
+        HPOEA_V2_CHECK(runner, optimizer.clone_count() >= clones_before + 1u,
+                       "parallel manager uses cloned optimizer instances");
         bool statuses_ok = true;
+        std::vector<unsigned long> result_seeds;
         for (const auto &opt_result : result.optimizer_results) {
-            if (opt_result.status != hpoea::core::RunStatus::Success &&
-                opt_result.status != hpoea::core::RunStatus::BudgetExceeded) {
+            if (opt_result.status != hpoea::core::RunStatus::Success) {
                 statuses_ok = false;
-                break;
             }
+            result_seeds.push_back(opt_result.seed);
         }
-        HPOEA_V2_CHECK(runner, statuses_ok, "parallel manager results have valid status");
+        const auto observed_after = optimizer.observed_optimizer_seeds();
+        std::vector<unsigned long> observed_new;
+        for (std::size_t i = observed_before; i < observed_after.size(); ++i) {
+            observed_new.push_back(observed_after[i]);
+        }
+        std::sort(observed_new.begin(), observed_new.end());
+        std::sort(result_seeds.begin(), result_seeds.end());
+        HPOEA_V2_CHECK(runner, statuses_ok, "parallel manager dummy results are Success");
+        HPOEA_V2_CHECK(runner, observed_after.size() == observed_before + config.trials_per_optimizer,
+                       "parallel manager passes one optimizer seed per trial");
+        HPOEA_V2_CHECK(runner, observed_new == result_seeds,
+                       "parallel manager result seeds match seeds passed to optimizers");
     }
 
 
@@ -259,6 +294,11 @@ int main() {
 
         HPOEA_V2_CHECK(runner, rec.optimizer_seed.has_value(),
                        "build_run_record: optimizer_seed present");
+        HPOEA_V2_CHECK(runner, !result.optimizer_results.empty() &&
+                                  rec.optimizer_seed == result.optimizer_results[0].seed,
+                       "build_run_record: optimizer_seed matches optimizer result seed");
+        HPOEA_V2_CHECK(runner, rec.algorithm_seed != 0UL,
+                       "build_run_record: algorithm_seed present");
 
 
         HPOEA_V2_CHECK(runner, !rec.message.empty(),
@@ -274,6 +314,20 @@ int main() {
         }
         HPOEA_V2_CHECK(runner, all_ids_match,
                        "build_run_record: all records share experiment_id");
+        if (!result.optimizer_results.empty()) {
+            HPOEA_V2_CHECK(runner,
+                           capture_logger.records.size() == result.optimizer_results[0].trials.size(),
+                           "build_run_record: one log record per hyperparameter trial");
+            bool record_seeds_match_trials = capture_logger.records.size() == result.optimizer_results[0].trials.size();
+            for (std::size_t i = 0; record_seeds_match_trials && i < capture_logger.records.size(); ++i) {
+                if (capture_logger.records[i].algorithm_seed !=
+                    result.optimizer_results[0].trials[i].optimization_result.seed) {
+                    record_seeds_match_trials = false;
+                }
+            }
+            HPOEA_V2_CHECK(runner, record_seeds_match_trials,
+                           "build_run_record: algorithm_seed matches each trial seed");
+        }
     }
 
 
@@ -357,10 +411,13 @@ int main() {
         config.algorithm_budget.generations = 2u;
         config.optimizer_budget.generations = 1u;
 
+        const auto clones_before = optimizer.clone_count();
         hpoea::core::ParallelExperimentManager manager(1);
         auto result = manager.run_experiment(config, optimizer, factory, problem, logger);
         HPOEA_V2_CHECK(runner, result.optimizer_results.size() == config.trials_per_optimizer,
                        "parallel manager with 1 worker returns correct number of results");
+        HPOEA_V2_CHECK(runner, optimizer.clone_count() > clones_before,
+                       "parallel manager with 1 worker uses cloned optimizer");
     }
 
 

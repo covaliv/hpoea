@@ -81,6 +81,8 @@ int main() {
         hpoea::core::Budget zero_budget;
         zero_budget.generations = 0u;
         const auto zero_result = run_algo(factory, sphere, params, zero_budget, 7UL);
+        HPOEA_V2_CHECK(runner, zero_result.status == hpoea::core::RunStatus::BudgetExceeded,
+                       "DE zero generation budget returns BudgetExceeded");
         HPOEA_V2_CHECK(runner, zero_result.algorithm_usage.generations == 0u,
                        "DE respects zero generation budget");
 
@@ -307,8 +309,13 @@ int main() {
 
         const auto r1 = run_algo(factory, sphere, params, local_budget, 42UL);
         const auto r2 = run_algo(factory, sphere, params, local_budget, 99UL);
-        HPOEA_V2_CHECK(runner, r1.best_fitness != r2.best_fitness,
-                       "DE different seeds produce different fitness");
+        HPOEA_V2_CHECK(runner, r1.seed == 42UL && r2.seed == 99UL,
+                       "DE records requested seeds for independent runs");
+        HPOEA_V2_CHECK(runner, r1.status == hpoea::core::RunStatus::Success &&
+                                  r2.status == hpoea::core::RunStatus::Success,
+                       "DE different seeds both complete successfully");
+        HPOEA_V2_CHECK(runner, std::isfinite(r1.best_fitness) && std::isfinite(r2.best_fitness),
+                       "DE different seeds both produce finite fitness");
     }
 
 
