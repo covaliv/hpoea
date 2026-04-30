@@ -26,7 +26,6 @@ bool nearly_equal(double a, double b, double tol = 1e-9) {
 int main() {
     hpoea::tests_v2::TestRunner runner;
 
-
     {
         const auto bounds = hpoea::core::transform_bounds({1.0, 1000.0}, Transform::log);
         HPOEA_V2_CHECK(runner, nearly_equal(bounds.lower, 0.0),
@@ -35,7 +34,6 @@ int main() {
                        "log transform bounds upper: log10(1000) = 3");
     }
 
-
     {
         const auto bounds = hpoea::core::transform_bounds({1.0, 64.0}, Transform::log2);
         HPOEA_V2_CHECK(runner, nearly_equal(bounds.lower, 0.0),
@@ -43,7 +41,6 @@ int main() {
         HPOEA_V2_CHECK(runner, nearly_equal(bounds.upper, 6.0),
                        "log2 transform bounds upper: log2(64) = 6");
     }
-
 
     {
 
@@ -54,7 +51,6 @@ int main() {
                        "sqrt transform bounds upper: sqrt(100) = 10");
     }
 
-
     {
         const auto bounds = hpoea::core::transform_bounds({-5.0, 5.0}, Transform::none);
         HPOEA_V2_CHECK(runner, nearly_equal(bounds.lower, -5.0),
@@ -63,6 +59,16 @@ int main() {
                        "none transform preserves upper bound");
     }
 
+    {
+        HPOEA_V2_CHECK(runner, nearly_equal(hpoea::core::inverse_transform(-2.0, Transform::log), 0.01),
+                       "log inverse transform applies 10^x");
+        HPOEA_V2_CHECK(runner, nearly_equal(hpoea::core::inverse_transform(3.0, Transform::log2), 8.0),
+                       "log2 inverse transform applies 2^x");
+        HPOEA_V2_CHECK(runner, nearly_equal(hpoea::core::inverse_transform(3.0, Transform::sqrt), 9.0),
+                       "sqrt inverse transform squares non-negative transformed value");
+        HPOEA_V2_CHECK(runner, nearly_equal(hpoea::core::inverse_transform(-3.0, Transform::sqrt), 0.0),
+                       "sqrt inverse transform clamps negative transformed value before squaring");
+    }
 
     {
 
@@ -91,7 +97,6 @@ int main() {
                        "sqrt transform bounds upper: sqrt(25) = 5");
     }
 
-
     {
         ParameterSpace space;
         ParameterDescriptor desc;
@@ -112,7 +117,6 @@ int main() {
         HPOEA_V2_CHECK(runner, cfg->integer_bounds->upper == 50,
                        "integer clamp upper: min(50, 100) = 50");
     }
-
 
     {
         ParameterSpace space;
@@ -135,8 +139,6 @@ int main() {
                        "integer clamp wide range upper: min(200, 100) = 100");
     }
 
-
-
     {
         ParameterSpace space;
         ParameterDescriptor desc;
@@ -157,7 +159,6 @@ int main() {
         HPOEA_V2_CHECK(runner, threw,
                        "integer clamp non-overlapping range throws ParameterValidationError");
     }
-
 
     {
         ParameterSpace space;
@@ -180,6 +181,26 @@ int main() {
                        "continuous clamp upper: min(2.0, 1.0) = 1.0");
     }
 
+    {
+        ParameterSpace space;
+        ParameterDescriptor desc;
+        desc.name = "lr";
+        desc.type = ParameterType::Continuous;
+        desc.continuous_range = ContinuousRange{0.0, 1.0};
+        space.add_descriptor(desc);
+
+        SearchSpace search;
+        search.optimize("lr", ContinuousRange{2.0, 3.0});
+
+        bool threw = false;
+        try {
+            search.validate_and_clamp(space);
+        } catch (const ParameterValidationError &) {
+            threw = true;
+        }
+        HPOEA_V2_CHECK(runner, threw,
+                       "continuous clamp non-overlapping range throws ParameterValidationError");
+    }
 
     {
         auto result = hpoea::core::clamp_bounds(IntegerRange{5, 50}, IntegerRange{10, 100});
@@ -193,11 +214,32 @@ int main() {
                        "clamp_bounds integer [20,80] inside [10,100] unchanged");
     }
 
-
     {
         auto result = hpoea::core::clamp_bounds(ContinuousRange{-1.0, 5.0}, ContinuousRange{0.0, 3.0});
         HPOEA_V2_CHECK(runner, nearly_equal(result.lower, 0.0) && nearly_equal(result.upper, 3.0),
                        "clamp_bounds continuous [-1,5] vs [0,3] = [0,3]");
+    }
+
+    {
+        bool threw = false;
+        try {
+            (void)hpoea::core::transform_bounds({0.0, 1.0}, Transform::log);
+        } catch (const ParameterValidationError &) {
+            threw = true;
+        }
+        HPOEA_V2_CHECK(runner, threw,
+                       "log transform bounds reject non-positive lower bound");
+    }
+
+    {
+        bool threw = false;
+        try {
+            (void)hpoea::core::transform_bounds({-1.0, 1.0}, Transform::sqrt);
+        } catch (const ParameterValidationError &) {
+            threw = true;
+        }
+        HPOEA_V2_CHECK(runner, threw,
+                       "sqrt transform bounds reject negative lower bound");
     }
 
     return runner.summarize("transform_bounds_tests");

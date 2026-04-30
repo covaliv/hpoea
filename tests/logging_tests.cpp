@@ -2,10 +2,13 @@
 
 #include "hpoea/core/logging.hpp"
 
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <set>
 #include <thread>
+#include <vector>
 #include <unistd.h>
 
 namespace {
@@ -13,6 +16,54 @@ std::filesystem::path unique_test_path(const std::string &base_name) {
     auto dir = std::filesystem::temp_directory_path();
     auto name = base_name + "_" + std::to_string(::getpid()) + ".jsonl";
     return dir / name;
+}
+
+std::vector<std::string> read_lines(const std::filesystem::path &path) {
+    std::ifstream in(path);
+    std::vector<std::string> lines;
+    std::string line;
+    while (std::getline(in, line)) {
+        lines.push_back(line);
+    }
+    return lines;
+}
+
+std::size_t count_occurrences(const std::string &text, const std::string &needle) {
+    std::size_t count = 0;
+    std::size_t pos = 0;
+    while ((pos = text.find(needle, pos)) != std::string::npos) {
+        ++count;
+        pos += needle.size();
+    }
+    return count;
+}
+
+bool has_numeric_field_close(const std::string &text,
+                             const std::string &field,
+                             double expected,
+                             double tolerance) {
+    const auto needle = "\"" + field + "\":";
+    const auto pos = text.find(needle);
+    if (pos == std::string::npos) {
+        return false;
+    }
+
+    try {
+        std::size_t consumed = 0;
+        const double value = std::stod(text.substr(pos + needle.size()), &consumed);
+        return consumed > 0 && std::fabs(value - expected) <= tolerance;
+    } catch (const std::exception &) {
+        return false;
+    }
+}
+
+bool has_raw_control_character(const std::string &text) {
+    for (const auto ch : text) {
+        if (static_cast<unsigned char>(ch) < 0x20) {
+            return true;
+        }
+    }
+    return false;
 }
 }
 
@@ -143,14 +194,14 @@ int main() {
         rt.message = "round-trip verification";
 
         const auto rt_json = serialize_run_record(rt);
-
-
-        HPOEA_V2_CHECK(runner, rt_json.find("round_trip_test_42") != std::string::npos,
-                        "rt: experiment_id present");
-        HPOEA_V2_CHECK(runner, rt_json.find("ackley_10d") != std::string::npos,
-                        "rt: problem_id present");
-        HPOEA_V2_CHECK(runner, rt_json.find("3.1415899999999999") != std::string::npos,
-                        "rt: objective_value with full precision");
+        HPOEA_V2_CHECK(runner, count_occurrences(rt_json, "\"schema_version\":3") == 1u,
+                        "rt: schema_version present exactly once");
+        HPOEA_V2_CHECK(runner, count_occurrences(rt_json, "\"experiment_id\":\"round_trip_test_42\"") == 1u,
+                        "rt: experiment_id present exactly once");
+        HPOEA_V2_CHECK(runner, count_occurrences(rt_json, "\"problem_id\":\"ackley_10d\"") == 1u,
+                        "rt: problem_id present exactly once");
+        HPOEA_V2_CHECK(runner, has_numeric_field_close(rt_json, "objective_value", 3.14159, 1e-12),
+                        "rt: objective_value numeric value");
         HPOEA_V2_CHECK(runner, rt_json.find("\"algorithm_seed\":42") != std::string::npos,
                         "rt: algorithm_seed value");
         HPOEA_V2_CHECK(runner, rt_json.find("\"optimizer_seed\":99") != std::string::npos,
@@ -171,10 +222,11 @@ int main() {
                         "rt: int64 parameter");
         HPOEA_V2_CHECK(runner, rt_json.find("\"variant\":\"exponential\"") != std::string::npos,
                         "rt: string parameter");
-        HPOEA_V2_CHECK(runner, rt_json.find("2.718") != std::string::npos,
+        HPOEA_V2_CHECK(runner, has_numeric_field_close(rt_json, "weight", 2.718, 1e-12),
                         "rt: double parameter");
-        HPOEA_V2_CHECK(runner, rt_json.find("\"cooling_rate\":0.9") != std::string::npos,
-                        "rt: optimizer parameter");
+        HPOEA_V2_CHECK(runner,
+                        has_numeric_field_close(rt_json, "cooling_rate", 0.95, 1e-12),
+                        "rt: optimizer parameter numeric value");
 
 
         HPOEA_V2_CHECK(runner, rt_json.find("\"function_evaluations\":1234") != std::string::npos,
@@ -209,14 +261,7 @@ int main() {
                         "rt: json ends with }");
 
 
-        bool has_raw_control = false;
-        for (const auto ch : rt_json) {
-            if (static_cast<unsigned char>(ch) < 0x20) {
-                has_raw_control = true;
-                break;
-            }
-        }
-        HPOEA_V2_CHECK(runner, !has_raw_control,
+        HPOEA_V2_CHECK(runner, !has_raw_control_character(rt_json),
                         "rt: no unescaped control characters in output");
 
 
@@ -263,10 +308,10 @@ int main() {
             HPOEA_V2_CHECK(runner, rt_logger.records_written() == 1u,
                             "rt: logger wrote one record");
 
-            std::ifstream rt_in(rt_log_path);
-            std::string rt_line;
-            std::getline(rt_in, rt_line);
-            HPOEA_V2_CHECK(runner, rt_line == rt_json,
+            const auto rt_lines = read_lines(rt_log_path);
+            HPOEA_V2_CHECK(runner, rt_lines.size() == 1u,
+                            "rt: file contains exactly one JSONL line");
+            HPOEA_V2_CHECK(runner, !rt_lines.empty() && rt_lines.front() == rt_json,
                             "rt: file line matches serialize_run_record exactly");
         } catch (const std::exception &ex) {
             HPOEA_V2_CHECK(runner, false,
@@ -362,14 +407,18 @@ int main() {
                            "logger multi: records_written is 3");
 
 
-            std::ifstream in(path);
-            int line_count = 0;
-            std::string line;
-            while (std::getline(in, line)) {
-                ++line_count;
-            }
-            HPOEA_V2_CHECK(runner, line_count == 3,
+            const auto lines = read_lines(path);
+            HPOEA_V2_CHECK(runner, lines.size() == 3u,
                            "logger multi: file has 3 lines");
+            r.objective_value = 1.0;
+            HPOEA_V2_CHECK(runner, !lines.empty() && lines[0] == serialize_run_record(r),
+                           "logger multi: first line matches first record exactly");
+            r.objective_value = 2.0;
+            HPOEA_V2_CHECK(runner, lines.size() > 1u && lines[1] == serialize_run_record(r),
+                           "logger multi: second line matches second record exactly");
+            r.objective_value = 3.0;
+            HPOEA_V2_CHECK(runner, lines.size() > 2u && lines[2] == serialize_run_record(r),
+                           "logger multi: third line matches third record exactly");
         } catch (const std::exception &ex) {
             HPOEA_V2_CHECK(runner, false, std::string("logger multi test failed: ") + ex.what());
         }
@@ -383,6 +432,7 @@ int main() {
         if (std::filesystem::exists(path)) std::filesystem::remove(path);
 
         try {
+            std::string expected_line;
             {
                 JsonlLogger logger(path, false);
 
@@ -393,6 +443,7 @@ int main() {
                 r.status = RunStatus::Success;
                 r.objective_value = 1.0;
                 r.message = "test";
+                expected_line = serialize_run_record(r);
 
                 logger.log(r);
                 HPOEA_V2_CHECK(runner, logger.records_written() == 1u,
@@ -403,12 +454,10 @@ int main() {
             }
 
 
-            std::ifstream in(path);
-            std::string line;
-            bool has_content = std::getline(in, line).good();
-            HPOEA_V2_CHECK(runner, has_content, "noflush: content present after flush and close");
-            HPOEA_V2_CHECK(runner, line.find("noflush") != std::string::npos,
-                           "noflush: content matches logged record");
+            const auto lines = read_lines(path);
+            HPOEA_V2_CHECK(runner, lines.size() == 1u, "noflush: exactly one line present after flush and close");
+            HPOEA_V2_CHECK(runner, !lines.empty() && lines.front() == expected_line,
+                           "noflush: line matches logged record exactly");
         } catch (const std::exception &ex) {
             HPOEA_V2_CHECK(runner, false, std::string("noflush test failed: ") + ex.what());
         }
@@ -433,21 +482,31 @@ int main() {
 
     {
         auto path = unique_test_path("concurrent_log");
+        constexpr int num_threads = 4;
+        constexpr int records_per_thread = 50;
+        std::set<std::string> expected_lines;
+        auto make_record = [](int thread_id, int index) {
+            RunRecord r;
+            r.experiment_id = "concurrent_" + std::to_string(thread_id);
+            r.problem_id = "sphere";
+            r.evolutionary_algorithm = {"DE", "pagmo::de", "2.x"};
+            r.status = RunStatus::Success;
+            r.objective_value = static_cast<double>(thread_id * 100 + index);
+            r.message = "thread " + std::to_string(thread_id) + " record " + std::to_string(index);
+            return r;
+        };
+        for (int t = 0; t < num_threads; ++t) {
+            for (int i = 0; i < records_per_thread; ++i) {
+                expected_lines.insert(serialize_run_record(make_record(t, i)));
+            }
+        }
+
         {
             JsonlLogger logger(path, true);
-            constexpr int num_threads = 4;
-            constexpr int records_per_thread = 50;
 
             auto writer = [&](int thread_id) {
                 for (int i = 0; i < records_per_thread; ++i) {
-                    RunRecord r;
-                    r.experiment_id = "concurrent_" + std::to_string(thread_id);
-                    r.problem_id = "sphere";
-                    r.evolutionary_algorithm = {"DE", "pagmo::de", "2.x"};
-                    r.status = RunStatus::Success;
-                    r.objective_value = static_cast<double>(thread_id * 100 + i);
-                    r.message = "thread " + std::to_string(thread_id);
-                    logger.log(r);
+                    logger.log(make_record(thread_id, i));
                 }
             };
 
@@ -467,20 +526,34 @@ int main() {
         }
 
 
-        std::ifstream in(path);
-        std::size_t line_count = 0;
+        const auto lines = read_lines(path);
+        std::set<std::string> actual_lines(lines.begin(), lines.end());
         bool all_valid_json = true;
-        std::string line;
-        while (std::getline(in, line)) {
-            ++line_count;
+        bool all_schema_v3 = true;
+        bool no_raw_controls = true;
+        for (const auto &line : lines) {
             if (line.empty() || line.front() != '{' || line.back() != '}') {
                 all_valid_json = false;
             }
+            if (line.find("\"schema_version\":3") == std::string::npos) {
+                all_schema_v3 = false;
+            }
+            if (has_raw_control_character(line)) {
+                no_raw_controls = false;
+            }
         }
-        HPOEA_V2_CHECK(runner, line_count == 200,
+        HPOEA_V2_CHECK(runner, lines.size() == expected_lines.size(),
                        "concurrent log file has exactly 200 lines");
         HPOEA_V2_CHECK(runner, all_valid_json,
-                       "all concurrent log lines are valid JSON objects");
+                       "all concurrent log lines are JSON object-shaped");
+        HPOEA_V2_CHECK(runner, all_schema_v3,
+                       "all concurrent log lines include schema_version 3");
+        HPOEA_V2_CHECK(runner, no_raw_controls,
+                       "all concurrent log lines avoid raw control characters");
+        HPOEA_V2_CHECK(runner, actual_lines.size() == expected_lines.size(),
+                       "concurrent log file has no duplicate records");
+        HPOEA_V2_CHECK(runner, actual_lines == expected_lines,
+                       "concurrent log file contains every expected record exactly once");
         std::filesystem::remove(path);
     }
 
