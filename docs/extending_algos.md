@@ -1,32 +1,102 @@
-## goal
+# Extending HPOEA
 
-these notes explain how to add an evolutionary algorithm or optimizer by following the current structure.
+These notes describe the project shape for a new evolutionary algorithm, hyperparameter optimizer, or problem.
 
-## adding an evolutionary algorithm
+Each extension follows the same project pattern:
 
-1. create a header under `include/hpoea/wrappers/...`. look at `include/hpoea/wrappers/pagmo/de_algorithm.hpp` to see the required functions. inherit from `core::IEvolutionaryAlgorithm` and add a factory class that derives from `core::IEvolutionaryAlgorithmFactory`. the factory lets the hyper optimizers create copies.
+1. public API
+2. implementation
+3. CMake wiring
+4. focused test
+5. small runnable example
 
-2. write the implementation in `src/wrappers/...`. use pagmo or another solver to run the algorithm. convert the `core::Budget` into your solver's limits and fill `core::OptimizationResult` with the best value, solution, and how much budget you used. expose all tunable options through `core::ParameterSpace`.
+## Nearby examples
 
-3. add the new `.cpp` file to `src/wrappers/pagmo/CMakeLists.txt` so it builds into `hpoea_pagmo`. rerun cmake with `-DHPOEA_WITH_PAGMO=ON` to refresh the build files.
+Closest existing implementations:
 
-4. show the new algorithm in one of the apps, like `apps/cmaes_optimization_example.cpp`, or add a new simple program. that gives others a runnable example and doubles as documentation.
+- Evolutionary algorithm: `include/hpoea/wrappers/pagmo/de_algorithm.hpp` and `src/wrappers/pagmo/de_algorithm.cpp`
+- Hyperparameter optimizer: `include/hpoea/wrappers/pagmo/cmaes_hyper.hpp` and `src/wrappers/pagmo/cmaes_hyper.cpp`
+- Problem: `include/hpoea/wrappers/problems/benchmark_problems.hpp` and `src/wrappers/problems/benchmark_problems.cpp`
+- Example: `apps/basic_ea_example.cpp` or `apps/basic_hpo_example.cpp`
+- Tests: files under `tests/` using `tests/test_harness.hpp`
 
-## adding a hyperparameter optimizer
+New dependencies are outside the usual extension pattern unless the project requires one.
 
-1. add a header under `include/hpoea/wrappers/...` similar to `include/hpoea/wrappers/pagmo/cmaes_hyper.hpp`. inherit from `core::IHyperparameterOptimizer` and define `identity()`, `parameter_space()`, `configure()`, and `optimize()`.
+## Evolutionary algorithm extension shape
 
-2. implement `optimize()` in `src/wrappers/...`. it should take the factory, create an algorithm, set the parameters, and track trials inside `core::HyperparameterOptimizationResult`. also honor the `core::Budget` so trials stop when the limits are reached.
+- Public header under `include/hpoea/wrappers/...`.
+- `core::IEvolutionaryAlgorithm` implementation.
+- Factory implementing `core::IEvolutionaryAlgorithmFactory`.
+- Tunable parameters exposed through `core::ParameterSpace`.
+- Defaults and parameter validation in `configure()`.
+- `core::Budget` converted into the wrapped solver's limits.
+- `core::OptimizationResult` filled with status, best fitness, best solution, budgets, usage, seed, effective parameters, and message.
+- `clone()` creates independent copies for experiment managers.
+- Source file listed in the relevant `CMakeLists.txt`.
+- Focused test and small app example.
 
-3. add the new source file to `HPOEA_PAGMO_SOURCES` so cmake builds it with the rest of the pagmo wrappers.
+Current Pagmo-backed algorithm implementations live in `src/wrappers/pagmo/` and build into `hpoea_pagmo`.
 
-4. give the optimizer a simple example in `apps/`, copying the style of `apps/knapsack_hpo_example.cpp`.
+## Hyperparameter optimizer extension shape
 
-## checklist
+- Public header under `include/hpoea/wrappers/...`.
+- `core::IHyperparameterOptimizer` implementation.
+- `identity()`, `parameter_space()`, `configure()`, `optimize()`, and `clone()` definitions.
+- Algorithm instances created through the factory inside `optimize()`.
+- Each trial tracked in `core::HyperparameterTrialRecord`.
+- Separate optimizer and inner algorithm budgets.
+- `core::HyperparameterOptimizationResult` filled with status, best parameters, best objective, trials, usage, seed, effective optimizer parameters, and message.
+- Configured state preserved in `clone()`.
+- Source file listed in CMake.
+- Focused tests and one example in `apps/`.
 
-- place headers in `include/hpoea/...` and implementations in `src/...`
-- describe parameters with `core::ParameterSpace` and set defaults
-- set clear `identity.family` and `identity.implementation` strings
-- list sources in `src/wrappers/pagmo/CMakeLists.txt`
-- add a runnable `apps/*` example so others can build and run it
+## Benchmark or custom problem shape
 
+- `core::IProblem` implementation.
+- `core::ProblemMetadata` with a stable `id`, `family`, and short description.
+- Dimension and bounds returned by the problem.
+- Decision vector size validation in `evaluate()`.
+- Objective value returned with the same minimization convention as the existing problems.
+- `is_stochastic()` override for stochastic problems.
+- Tests for bounds, known values, and invalid input.
+- Example for a new problem pattern.
+
+Built-in shared problems belong in `include/hpoea/wrappers/problems/` and `src/wrappers/problems/`. One-off examples can define a local problem class inside an app, as `apps/custom_problem_example.cpp` does.
+
+## Extension test shape
+
+Tests use the local test harness in `tests/test_harness.hpp`. The project does not use a separate test framework.
+
+Behavior covered by extension tests:
+
+- invalid parameters are rejected
+- defaults are applied
+- budgets are respected
+- returned solutions match the problem dimension and bounds
+- seeds are deterministic where expected
+- clone preserves configured state
+
+New tests are registered with `hpoea_add_test()` in `tests/CMakeLists.txt` and labeled with `hpoea-core` or `hpoea-pagmo`.
+
+## User-visible documentation shape
+
+Extension documentation includes, when applicable:
+
+- new algorithm, optimizer, or problem listed in `README.md`
+- parameters, defaults, and ranges in `docs/reference.md`
+- new config type ids, fields, or custom dispatch rules in `docs/reference.md`
+- runnable example mentioned in `apps/README.md`
+- reproducibility notes for changes to seed, budget, search-space, or logging behavior
+- diagnostic notes for config parsing, validation, or expansion failures
+- troubleshooting notes for common setup or runtime failures
+
+## Final shape summary
+
+- Header lives under `include/hpoea/...`.
+- Implementation lives under `src/...`.
+- CMake builds the new source.
+- Parameters are described by `core::ParameterSpace`.
+- `identity.family`, `identity.implementation`, and `identity.version` are set.
+- Budgets and usage counters are reported clearly.
+- Tests are registered with the right label.
+- A small example shows the feature.

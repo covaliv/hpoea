@@ -1,84 +1,117 @@
-# Example Programs
+# Example programs
 
-Example programs demonstrating HPOEA framework usage.
+The programs in this directory are focused, runnable examples for the Pagmo-backed part of HPOEA.
 
-## Building Examples
+They are built only when CMake is configured with `HPOEA_WITH_PAGMO=ON`.
 
-Examples are built automatically when configuring with `HPOEA_WITH_PAGMO=ON`:
+Build commands, dependency details, and parameter/config references are in [docs/reference.md](../docs/reference.md).
 
-```bash
-cd build
-cmake .. -DHPOEA_WITH_PAGMO=ON
-cmake --build .
-```
-
-## Running Examples
+## Build
 
 ```bash
-./build/apps/basic_ea_example
-./build/apps/basic_hpo_example
-./build/apps/experiment_management_example
-./build/apps/custom_problem_example
-./build/apps/optimizer_comparison_example
-./build/apps/custom_parameter_space_example
-./build/apps/cmaes_optimization_example
-./build/apps/sga_optimization_example
-./build/apps/de1220_optimization_example
-./build/apps/knapsack_optimization_example
-./build/apps/knapsack_hpo_example
-./build/apps/knapsack_pso_sa_example
+cmake -S . -B build/hpoea-pagmo \
+  -DHPOEA_WITH_PAGMO=ON \
+  -DPagmo_DIR=/path/to/pagmo/lib/cmake/pagmo
+cmake --build build/hpoea-pagmo
 ```
 
-## Example Descriptions
+The same build tree includes tests when configured with `-DHPOEA_BUILD_TESTS=ON`.
 
-### basic_ea_example.cpp
+## Introductory examples
 
-Demonstrates basic evolutionary algorithm usage. Configures Differential Evolution algorithm with specified parameters and optimizes a 10-dimensional Sphere problem. Outputs best fitness, function evaluations, generations, and wall time.
+Small introductory executables:
 
-### basic_hpo_example.cpp
+```bash
+./build/hpoea-pagmo/apps/basic_ea_example
+./build/hpoea-pagmo/apps/basic_hpo_example
+./build/hpoea-pagmo/apps/experiment_management_example
+```
 
-Demonstrates hyperparameter optimization using CMA-ES to tune DE parameters. Configures CMA-ES optimizer and optimizes DE hyperparameters on an 8-dimensional Rosenbrock problem. Outputs best objective value, number of trials, best hyperparameters, function evaluations, and wall time.
+Together they cover:
 
-### experiment_management_example.cpp
+1. run one evolutionary algorithm
+2. tune algorithm parameters with a hyperparameter optimizer
+3. repeat runs and write JSONL records
 
-Demonstrates experiment management with structured logging. Uses SequentialExperimentManager to run multiple trials with logging to JSON Lines format. Outputs experiment ID, number of optimizer runs, best objective, trials count, function evaluations, and best hyperparameters.
+## Examples by area
 
-### custom_problem_example.cpp
+### Single evolutionary algorithm runs
 
-Demonstrates custom problem implementation. Implements a Shifted Sphere problem by extending IProblem interface. Shows how to define custom problem metadata, bounds, and evaluation function. Outputs best fitness, distance to optimum, and function evaluations.
+- `basic_ea_example.cpp`: Differential Evolution on a 10-dimensional Sphere problem.
+- `cmaes_optimization_example.cpp`: CMA-ES used as the evolutionary algorithm.
+- `sga_optimization_example.cpp`: Simple Genetic Algorithm on Rastrigin.
+- `de1220_optimization_example.cpp`: DE1220 / pDE on Ackley.
+- `knapsack_optimization_example.cpp`: Differential Evolution on a 0-1 knapsack problem with continuous encoding.
 
-### optimizer_comparison_example.cpp
+### Tune hyperparameters
 
-Compares multiple hyperparameter optimizers (CMA-ES, Simulated Annealing, PSO-based) on the same problem. Runs experiments for each optimizer and compares results. Outputs optimizer name, best objective, trials count, function evaluations, and ranked comparison results.
+- `basic_hpo_example.cpp`: CMA-ES tunes Differential Evolution on Rosenbrock.
+- `knapsack_hpo_example.cpp`: CMA-ES tunes Differential Evolution on knapsack.
+- `knapsack_pso_sa_example.cpp`: Simulated Annealing tunes Particle Swarm Optimization on knapsack.
+- `optimizer_comparison_example.cpp`: compares CMA-ES, Simulated Annealing, and PSO-based hyperparameter optimization.
 
-### custom_parameter_space_example.cpp
+### Experiments and logs
 
-Demonstrates custom parameter space definition and validation. Creates a ParameterSpace with custom descriptors, generates random valid configurations, validates them, and tests a sampled configuration with an algorithm. Outputs generated configurations and optimization results.
+- `experiment_management_example.cpp`: runs repeated optimizer trials and writes `experiment_results.jsonl`.
+- `benchmark_suite.cpp`: runs a small benchmark suite. `HPOEA_BENCHMARK_FULL=1` enables a longer run.
 
-### cmaes_optimization_example.cpp
+The benchmark suite executable is named:
 
-Demonstrates CMA-ES used as an evolutionary algorithm (not as a hyperparameter optimizer). Configures CMA-ES algorithm with specified parameters and optimizes a 10-dimensional Sphere problem. Outputs best fitness, function evaluations, generations, and wall time.
+```bash
+./build/hpoea-pagmo/apps/hpoea_benchmark_suite
+```
 
-### sga_optimization_example.cpp
+### Custom inputs
 
-Demonstrates Simple Genetic Algorithm (SGA) usage. Configures SGA with population size, generations, crossover probability, and mutation probability. Optimizes a 10-dimensional Rastrigin problem. Outputs best fitness, function evaluations, generations, and wall time.
+- `custom_problem_example.cpp`: implements a local `IProblem` in the example file.
+- `custom_parameter_space_example.cpp`: builds and validates a custom `ParameterSpace`.
+- `search_space_example.cpp`: fixes, narrows, and excludes parameters during hyperparameter optimization.
+  C++ transform notes are in [search-space transforms](../docs/reference.md#search-space-transforms).
 
-### de1220_optimization_example.cpp
+### Extra check programs
 
-Demonstrates DE1220 (pDE) usage - an alternative self-adaptive Differential Evolution variant implemented via `pagmo::de1220`. Note: This is different from jDE (Brest et al.), which is available via SADE with `variant_adptv=1`. Configures DE1220 with population size, generations, tolerance parameters, variant adaptation, and memory settings. Optimizes a 10-dimensional Ackley problem. Outputs best fitness, function evaluations, generations, and wall time.
+These are extra check programs rather than the main CTest suite:
 
-### knapsack_optimization_example.cpp
+- `simple_example.cpp`: a compact tour of several algorithms.
+- `correctness_test.cpp`: checks basic optimization behavior and reproducibility.
+- `sfu_benchmark_test.cpp`: checks several benchmark functions.
 
-Demonstrates knapsack problem optimization using Differential Evolution. Creates a 0-1 knapsack problem with item values and weights, then optimizes it to find the best item selection. Uses continuous encoding where values in [0,1] are thresholded at 0.5 to determine item selection. Outputs best fitness, selected items, total value, total weight, capacity, function evaluations, generations, and wall time.
+Their executable names are:
 
-### knapsack_hpo_example.cpp
+```bash
+./build/hpoea-pagmo/apps/hpoea_simple_example
+./build/hpoea-pagmo/apps/hpoea_app_correctness_test
+./build/hpoea-pagmo/apps/hpoea_sfu_benchmark_test
+```
 
-Demonstrates hyperparameter optimization for the knapsack problem. Uses CMA-ES to tune Differential Evolution parameters while optimizing a knapsack problem instance. Shows how to apply hyperparameter optimization to combinatorial problems. Outputs best objective, number of trials, best hyperparameters, function evaluations, and wall time.
+## Output format
 
-### knapsack_pso_sa_example.cpp
+Most examples print plain `key: value` lines. Most optimization examples write errors to stderr with an `error:` prefix and return a non-zero exit code.
 
-Demonstrates pso with simulated annealing hyperparameter optimization for knapsack problem. Uses simulated annealing to tune particle swarm optimization parameters. Shows alternative hyperparameter optimizer and evolutionary algorithm combination. Outputs best objective, number of trials, best hyperparameters, function evaluations, and wall time.
+`custom_parameter_space_example.cpp` also prints `validation_error:` for expected validation failures and still exits successfully after demonstrating them. The check programs print validation lines as they run and return non-zero when a check fails.
 
-## Output Format
+Examples that use `core::JsonlLogger` write JSON Lines files. Each line is one logged inner algorithm trial.
 
-All examples output results in key:value format. Error messages are written to stderr with "error:" prefix. Successful execution returns exit code 0.
+Existing files are appended to. A clean rerun starts from a new or empty log file. Exact fields are in the [logging schema](../docs/reference.md#logging-schema).
+
+## Full executable list
+
+```bash
+./build/hpoea-pagmo/apps/basic_ea_example
+./build/hpoea-pagmo/apps/basic_hpo_example
+./build/hpoea-pagmo/apps/experiment_management_example
+./build/hpoea-pagmo/apps/custom_problem_example
+./build/hpoea-pagmo/apps/optimizer_comparison_example
+./build/hpoea-pagmo/apps/custom_parameter_space_example
+./build/hpoea-pagmo/apps/cmaes_optimization_example
+./build/hpoea-pagmo/apps/sga_optimization_example
+./build/hpoea-pagmo/apps/de1220_optimization_example
+./build/hpoea-pagmo/apps/knapsack_optimization_example
+./build/hpoea-pagmo/apps/knapsack_hpo_example
+./build/hpoea-pagmo/apps/knapsack_pso_sa_example
+./build/hpoea-pagmo/apps/search_space_example
+./build/hpoea-pagmo/apps/hpoea_simple_example
+./build/hpoea-pagmo/apps/hpoea_app_correctness_test
+./build/hpoea-pagmo/apps/hpoea_sfu_benchmark_test
+./build/hpoea-pagmo/apps/hpoea_benchmark_suite
+```
