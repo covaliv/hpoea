@@ -1,26 +1,45 @@
-# HPOEA - Hyperparameter Optimization Framework for Evolutionary Algorithms
+# HPOEA
 
-Modular C++ framework for hyperparameter optimization of evolutionary algorithms. Built on Pagmo2 library.
+HPOEA is a C++20 framework for repeatable optimization experiments with evolutionary algorithms and hyperparameter tuning.
 
-## Components
+A typical experiment defines a problem, selects an algorithm, sets budgets and seeds, then records the result.
 
-### Evolutionary Algorithms
-- Differential Evolution (DE) - `pagmo::de`
-- Particle Swarm Optimization (PSO) - `pagmo::pso`
-- Self-Adaptive Differential Evolution (SADE) - `pagmo::sade`
-  - Can be configured as jDE (variant_adptv=1, Brest et al.) or iDE (variant_adptv=2, Elsayed et al.)
-  - Defaults to jDE (variant_adptv=1)
-- DE1220 (pDE) - `pagmo::de1220` - Alternative self-adaptive DE variant
-- Simple Genetic Algorithm (SGA) - `pagmo::sga`
-- CMA-ES (also available as an evolutionary algorithm) - `pagmo::cmaes`
+Hyperparameter optimization adds an outer search over algorithm parameters. Experiment runs can write JSON Lines logs for later analysis.
 
-### Hyperparameter Optimizers
+The core library builds without Pagmo2. `HPOEA_WITH_PAGMO=ON` adds Pagmo2 algorithms, optimizers, examples, and Pagmo tests.
+
+## What is included
+
+### Core library
+
+- Public interfaces for problems, evolutionary algorithms, and hyperparameter optimizers.
+- Parameter spaces and search-space restrictions.
+- Sequential and parallel experiment managers.
+- Budget, seed, status, and error result types.
+- JSON Lines logging for experiment records.
+- Config parsing and validation support.
+- Baseline optimizer for default or fixed-parameter comparisons.
+
+### Pagmo2 wrappers
+
+When `HPOEA_WITH_PAGMO=ON`, the project builds wrappers for:
+
+- Differential Evolution (`pagmo::de`)
+- Particle Swarm Optimization (`pagmo::pso`)
+- Self-Adaptive Differential Evolution (`pagmo::sade`)
+- DE1220 / pDE (`pagmo::de1220`)
+- Simple Genetic Algorithm (`pagmo::sga`)
+- CMA-ES as an evolutionary algorithm (`pagmo::cmaes`)
+
+Hyperparameter optimizers include:
+
 - CMA-ES
 - Simulated Annealing
 - PSO-based tuning
-- Nelder-Mead (compass search)
+- NLopt Nelder-Mead
 
-### Benchmark Problems
+Built-in problems include:
+
 - Sphere
 - Rosenbrock
 - Rastrigin
@@ -29,129 +48,119 @@ Modular C++ framework for hyperparameter optimization of evolutionary algorithms
 - Schwefel
 - Zakharov
 - Styblinski-Tang
-- Knapsack (0-1 knapsack with continuous encoding and penalty-based constraint handling)
-
-### Features
-- Parallel execution via thread-based experiment management
-- Structured logging in JSON Lines format
-- Reproducibility through seed management and parameter tracking
+- 0-1 Knapsack with continuous encoding
 
 ## Requirements
 
-- c++20 compiler
-- cmake 3.20 or later
-- pagmo2 library with eigen3 support
+- C++20 compiler
+- CMake 3.20 or newer
+- Optional: Pagmo2 for the wrapper library, examples, and Pagmo tests
+- For `HPOEA_WITH_PAGMO=ON`: Pagmo2 built with Eigen3 support for CMA-ES and NLopt support for Nelder-Mead
 
-## Installing Pagmo2
+The build uses `tomlplusplus`. If CMake cannot find an installed package, it fetches `tomlplusplus` through CMake `FetchContent`. Dependency details are in [docs/reference.md](docs/reference.md#build-and-dependencies).
 
-install eigen3:
+## Quick start
+
+Core library build and test:
+
 ```bash
-sudo pacman -S eigen
+cmake -S . -B build/hpoea-core -DHPOEA_BUILD_TESTS=ON
+cmake --build build/hpoea-core
+ctest --test-dir build/hpoea-core -L hpoea-core --output-on-failure
 ```
 
-build and install pagmo2 with eigen3 support:
+Pagmo2 wrapper and example build:
+
 ```bash
-git clone https://github.com/esa/pagmo2.git
-cd pagmo2
-mkdir build && cd build
-cmake .. -DPAGMO_WITH_EIGEN3=ON -DEigen3_DIR=/usr/lib/cmake/eigen3
-cmake --build .
-cmake --install . --prefix ~/.local
+cmake -S . -B build/hpoea-pagmo \
+  -DHPOEA_BUILD_TESTS=ON \
+  -DHPOEA_WITH_PAGMO=ON \
+  -DPagmo_DIR=/path/to/pagmo/lib/cmake/pagmo
+cmake --build build/hpoea-pagmo
 ```
 
-verify installation:
+Small example executables:
+
 ```bash
-ls ~/.local/lib/cmake/pagmo/PagmoConfig.cmake
-ls ~/.local/include/pagmo/pagmo.hpp
-ls ~/.local/lib/libpagmo.so*
+./build/hpoea-pagmo/apps/basic_ea_example
+./build/hpoea-pagmo/apps/basic_hpo_example
 ```
 
-if cmake cannot find pagmo2, specify the installation directory:
+The helper script provides the same checks:
+
 ```bash
-cmake -S . -B build -DHPOEA_WITH_PAGMO=ON -DPagmo_DIR=~/.local/lib/cmake/pagmo
+./run_tests.sh --core-only
+./run_tests.sh --with-pagmo --pagmo-dir /path/to/pagmo/lib/cmake/pagmo
 ```
 
-if you get errors about missing eigen3 support, rebuild pagmo2 with eigen3 enabled:
-```bash
-cd pagmo2/build
-cmake .. -DPAGMO_WITH_EIGEN3=ON -DEigen3_DIR=/usr/lib/cmake/eigen3
-cmake --build .
-cmake --install . --prefix ~/.local
-```
+CMake integration, config, parameters, logging, and troubleshooting details are in [docs/reference.md](docs/reference.md).
 
-## Building
-
-standard build:
-```bash
-cmake -S . -B build -DHPOEA_WITH_PAGMO=ON -DPagmo_DIR=~/.local/lib/cmake/pagmo
-cmake --build build
-```
-
-build with tests:
-```bash
-cmake -S . -B build -DHPOEA_WITH_PAGMO=ON -DPagmo_DIR=~/.local/lib/cmake/pagmo -DHPOEA_BUILD_TESTS=ON
-cmake --build build
-```
-
-## Usage Example
+## Minimal example
 
 ```cpp
-#include "hpoea/core/experiment.hpp"
+#include "hpoea/core/types.hpp"
 #include "hpoea/wrappers/pagmo/de_algorithm.hpp"
-#include "hpoea/wrappers/pagmo/cmaes_hyper.hpp"
 #include "hpoea/wrappers/problems/benchmark_problems.hpp"
-#include "hpoea/core/logging.hpp"
 
-using namespace hpoea;
+#include <cstdint>
+#include <iostream>
 
-wrappers::problems::SphereProblem problem(10);
-pagmo_wrappers::PagmoDifferentialEvolutionFactory ea_factory;
-pagmo_wrappers::PagmoCmaesHyperOptimizer optimizer;
+int main() {
+    using namespace hpoea;
 
-core::ExperimentConfig config;
-config.experiment_id = "example";
-config.trials_per_optimizer = 5;
-config.islands = 4;
-config.algorithm_budget.generations = 100;
-config.optimizer_budget.generations = 50;
-config.log_file_path = "results.jsonl";
+    wrappers::problems::SphereProblem problem(10);
+    pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
+    auto algorithm = factory.create();
 
-core::JsonlLogger logger(config.log_file_path);
-core::ParallelExperimentManager manager(4);
-auto result = manager.run_experiment(config, optimizer, ea_factory, problem, logger);
+    core::ParameterSet parameters;
+    parameters.emplace("population_size", std::int64_t{50});
+    parameters.emplace("generations", std::int64_t{100});
+    parameters.emplace("scaling_factor", 0.8);
+    parameters.emplace("crossover_rate", 0.9);
+    algorithm->configure(parameters);
+
+    core::Budget budget;
+    budget.generations = 100;
+
+    const auto result = algorithm->run(problem, budget, 42UL);
+    if (result.status != core::RunStatus::Success) {
+        std::cerr << "error: " << result.message << "\n";
+        return 1;
+    }
+
+    std::cout << "best_fitness: " << result.best_fitness << "\n";
+    std::cout << "function_evaluations: "
+              << result.algorithm_usage.function_evaluations << "\n";
+}
 ```
 
-## Architecture
+## Main concepts
 
-Layered architecture with four components:
+HPOEA has a small flow:
 
-1. Core interfaces: abstract base classes for problems, algorithms, and optimizers
-2. Wrappers: Pagmo2 adapters implementing core interfaces
-3. Experiment management: orchestration layer for running experiments
-4. Logging: structured logging system for reproducibility
+1. A `core::IProblem` describes the objective, dimension, and bounds.
+2. A `core::IEvolutionaryAlgorithmFactory` creates algorithm instances.
+3. A `core::IHyperparameterOptimizer` searches algorithm parameters.
+4. A `core::IExperimentManager` repeats runs, assigns seeds, and logs records.
+5. A `core::JsonlLogger` writes one JSON object per inner algorithm trial.
 
-## experiment complexity guide
+The full mental model is in [docs/reference.md#core-concepts](docs/reference.md#core-concepts).
 
-- lines of code: adapting the examples in `apps/knapsack_optimization_example.cpp` or `apps/knapsack_hpo_example.cpp` requires roughly 40-60 lines, covering includes, problem setup, optimizer configuration, budgets, and the run loop.
-- required concepts: understand `core::IProblem` (problem definition), `pagmo_wrappers::IEvolutionaryAlgorithmFactory` (algorithm choice), `core::IHyperparameterOptimizer` (meta-optimizer), `core::Budget` (limits), and `core::Logger` (jsonl output). these abstractions mirror the headers included in every example.
-- time estimate: once dependencies are installed and the build tree is configured with `HPOEA_WITH_PAGMO=ON`, customizing an existing example to a new problem typically takes 10–15 minutes; implementing a brand new experiment (new `apps/*.cpp`) usually fits in a 30–45 minute window including compilation.
-- common pitfalls: forgetting to build pagmo with eigen3 support (causes `pagmo::cmaes` compile errors), omitting `-DPagmo_DIR` so cmake cannot find the local install, mismatching problem dimension vs. decision vector size (throws at runtime), and running optimizers without setting budgets which keeps defaults at zero trials.
+## Documentation map
 
-## Example Programs
+- [README.md](README.md): project overview, requirements, quick start, and minimal example.
+- [apps/README.md](apps/README.md): example programs and executable names.
+- [docs/reference.md](docs/reference.md): build, CMake integration, concepts, config, parameters, logging, reproducibility, benchmarking, and troubleshooting.
+- [docs/extending_algos.md](docs/extending_algos.md): project shape for new algorithms, optimizers, and problems.
 
-Example programs are located in `apps/` directory:
+Agent and wiki notes under `docs/agent/`, `docs/ai-wiki/`, and `.omx/wiki/` are supporting maintenance notes, not primary HPOEA reference documentation.
 
-- `basic_ea_example.cpp`: basic evolutionary algorithm usage
-- `basic_hpo_example.cpp`: hyperparameter optimization example
-- `experiment_management_example.cpp`: experiment management and logging
-- `custom_problem_example.cpp`: custom problem implementation
-- `optimizer_comparison_example.cpp`: comparing multiple hyperparameter optimizers
-- `custom_parameter_space_example.cpp`: custom parameter space definition
-- `cmaes_optimization_example.cpp`: CMA-ES as an evolutionary algorithm
-- `sga_optimization_example.cpp`: Simple Genetic Algorithm usage
-- `de1220_optimization_example.cpp`: DE1220 (pDE) usage - alternative self-adaptive DE variant
-- `knapsack_optimization_example.cpp`: knapsack problem optimization using differential evolution
-- `knapsack_hpo_example.cpp`: hyperparameter optimization for knapsack problem using cma-es to tune de parameters
-- `knapsack_pso_sa_example.cpp`: pso with simulated annealing hyperparameter optimization for knapsack problem
+## Experiment records
 
-See `apps/README.md` for detailed documentation.
+Repeatable experiment records include the source snapshot, compiler, CMake version, dependency versions, seed, budgets, command line, and JSONL output path.
+
+Inner algorithm budgets and outer optimizer budgets are separate. Fixed seeds make repeated comparisons stable.
+
+JSONL logs append to the target file. A clean run starts with a new or empty log file.
+
+More reproducibility details are in [docs/reference.md#reproducibility-and-benchmarking](docs/reference.md#reproducibility-and-benchmarking).
