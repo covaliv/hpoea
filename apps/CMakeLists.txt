@@ -1,3 +1,12 @@
+add_executable(cli cli.cpp)
+set_target_properties(cli PROPERTIES OUTPUT_NAME hpoea)
+target_link_libraries(cli PRIVATE hpoea_core)
+target_compile_features(cli PRIVATE cxx_std_20)
+target_compile_definitions(cli
+    PRIVATE
+        HPOEA_PROJECT_VERSION="${PROJECT_VERSION}"
+)
+
 if (HPOEA_WITH_PAGMO)
     add_executable(hpoea_simple_example simple_example.cpp)
     target_link_libraries(hpoea_simple_example PRIVATE hpoea_pagmo hpoea_core)
