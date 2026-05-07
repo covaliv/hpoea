@@ -267,6 +267,7 @@ std::shared_ptr<hpoea::core::SearchSpace> make_algorithm_search_space(
 
     auto search = std::make_shared<hpoea::core::SearchSpace>();
     for (const auto &[name, spec] : algorithm.search_parameters) {
+        // search-space entries constrain what the hyper-optimizer may tune
         switch (spec.mode) {
         case SearchParameterMode::Range:
             if (!spec.continuous_range.has_value()) {
