@@ -6,13 +6,16 @@
 #include "hpoea/core/experiment.hpp"
 #include "hpoea/core/logging.hpp"
 
+#include <cstdint>
 #include <exception>
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -178,6 +181,17 @@ bool is_command_failure_status(hpoea::core::RunStatus status) {
         || status == RunStatus::InternalError;
 }
 
+std::optional<unsigned long> to_unsigned_long_seed(std::uint64_t seed) {
+    if (seed > static_cast<std::uint64_t>(std::numeric_limits<unsigned long>::max())) {
+        return std::nullopt;
+    }
+    return static_cast<unsigned long>(seed);
+}
+
+struct PreparedRun {
+    hpoea::config::ResolvedRunSpec run;
+    hpoea::cli::DispatchObjects dispatch;
+};
 
 int run_validate(const std::filesystem::path &path) {
     const auto config = parse_suite_config(path);
@@ -250,6 +264,13 @@ std::optional<hpoea::core::ExperimentConfig> make_experiment_config(
         return std::nullopt;
     }
 
+    const auto seed = to_unsigned_long_seed(run.seed);
+    if (!seed.has_value()) {
+        std::cerr << "error: run " << run.run_id << ": seed is too large for this platform: "
+                  << run.seed << '\n';
+        return std::nullopt;
+    }
+
     hpoea::core::ExperimentConfig config;
     config.experiment_id = run.run_id;
     config.trials_per_optimizer = 1;
@@ -257,7 +278,7 @@ std::optional<hpoea::core::ExperimentConfig> make_experiment_config(
     config.algorithm_budget = to_core_budget(run.algorithm_budget);
     config.optimizer_budget = to_core_budget(run.optimizer_budget);
     config.log_file_path = run.planned_output_path;
-    config.random_seed = static_cast<unsigned long>(run.seed);
+    config.random_seed = *seed;
     if (!algorithm->fixed_parameters.empty()) {
         config.algorithm_baseline_parameters = algorithm->fixed_parameters;
     }
@@ -294,33 +315,43 @@ int run_config(const std::filesystem::path &path) {
         return 1;
     }
 
+    std::vector<PreparedRun> prepared_runs;
+    prepared_runs.reserve(expansion.runs.size());
+    bool dispatch_ok = true;
+    for (const auto &run : expansion.runs) {
+        auto dispatch = hpoea::cli::make_dispatch_objects(*config, run);
+        if (!dispatch.ok()) {
+            dispatch_ok = false;
+            for (const auto &error : dispatch.errors) {
+                std::cerr << "error: run " << run.run_id << ": " << error << '\n';
+            }
+            continue;
+        }
+        prepared_runs.push_back(PreparedRun{run, std::move(dispatch.objects)});
+    }
+    if (!dispatch_ok) {
+        return 1;
+    }
+
     bool had_failed_status = false;
     try {
-        for (const auto &run : expansion.runs) {
-            auto experiment_config = make_experiment_config(*config, run);
+        for (auto &prepared : prepared_runs) {
+            auto experiment_config = make_experiment_config(*config, prepared.run);
             if (!experiment_config.has_value()) {
                 return 1;
             }
 
             create_parent_directory(experiment_config->log_file_path);
-            auto dispatch = hpoea::cli::make_dispatch_objects(*config, run);
-            if (!dispatch.ok()) {
-                for (const auto &error : dispatch.errors) {
-                    std::cerr << "error: run " << run.run_id << ": " << error << '\n';
-                }
-                return 1;
-            }
-
             hpoea::core::JsonlLogger logger{experiment_config->log_file_path};
             hpoea::core::SequentialExperimentManager manager;
             const auto result = manager.run_experiment(
                 *experiment_config,
-                *dispatch.objects.optimizer,
-                *dispatch.objects.algorithm_factory,
-                *dispatch.objects.problem,
+                *prepared.dispatch.optimizer,
+                *prepared.dispatch.algorithm_factory,
+                *prepared.dispatch.problem,
                 logger);
 
-            std::cout << "ran: " << run.run_id << '\n';
+            std::cout << "ran: " << prepared.run.run_id << '\n';
             std::cout << "  output: " << experiment_config->log_file_path.generic_string() << '\n';
             std::cout << "  optimizer_runs: " << result.optimizer_results.size() << '\n';
             std::cout << "  records: " << logger.records_written() << '\n';
