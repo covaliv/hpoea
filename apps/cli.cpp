@@ -1,3 +1,5 @@
+#include "cli/dispatch.hpp"
+
 #include "hpoea/config/config_parser.hpp"
 #include "hpoea/config/config_validator.hpp"
 #include "hpoea/config/suite_expander.hpp"
@@ -118,6 +120,15 @@ bool has_blocking_plan_diagnostics(const hpoea::config::ValidationResult &result
     return false;
 }
 
+void print_component_line(std::ostream &out,
+                          std::string_view label,
+                          const hpoea::cli::ComponentDispatch &annotation) {
+    out << "  " << label << ": " << annotation.id
+        << " type=" << annotation.type
+        << " backend=" << annotation.backend
+        << " dispatch=" << annotation.dispatch << '\n';
+}
+
 int run_validate(const std::filesystem::path &path) {
     const auto config = parse_suite_config(path);
     if (!config.has_value()) {
@@ -157,11 +168,17 @@ int run_plan(const std::filesystem::path &path) {
     std::cout << "runs: " << expansion.runs.size() << '\n';
 
     for (const auto &run : expansion.runs) {
+        const auto dispatch = hpoea::cli::annotate_run_dispatch(*config, run);
+
         std::cout << "run: " << run.run_id << '\n';
         std::cout << "  experiment: " << run.experiment_id << '\n';
         std::cout << "  repetition: " << run.repetition_index << '\n';
         std::cout << "  seed: " << run.seed << '\n';
         std::cout << "  output: " << run.planned_output_path.generic_string() << '\n';
+        print_component_line(std::cout, "problem", dispatch.problem);
+        print_component_line(std::cout, "algorithm", dispatch.algorithm);
+        print_component_line(std::cout, "optimizer", dispatch.optimizer);
+        std::cout << "  runnable: " << (dispatch.runnable ? "yes" : "no") << '\n';
     }
 
     return 0;

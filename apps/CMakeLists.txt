@@ -1,4 +1,7 @@
-add_executable(cli cli.cpp)
+add_executable(cli
+    cli.cpp
+    cli/dispatch.cpp
+)
 set_target_properties(cli PROPERTIES OUTPUT_NAME hpoea)
 target_link_libraries(cli PRIVATE hpoea_core)
 target_compile_features(cli PRIVATE cxx_std_20)
