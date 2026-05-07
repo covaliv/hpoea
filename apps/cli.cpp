@@ -3,7 +3,10 @@
 #include "hpoea/config/config_parser.hpp"
 #include "hpoea/config/config_validator.hpp"
 #include "hpoea/config/suite_expander.hpp"
+#include "hpoea/core/experiment.hpp"
+#include "hpoea/core/logging.hpp"
 
+#include <exception>
 #include <filesystem>
 #include <iostream>
 #include <optional>
@@ -56,11 +59,6 @@ int usage_error(std::string_view message) {
     std::cerr << "error: " << message << '\n'
               << "Try 'hpoea --help'.\n";
     return exit_usage_error;
-}
-
-int command_not_ready(std::string_view command) {
-    std::cerr << "error: command is not implemented yet: " << command << '\n';
-    return 1;
 }
 
 void print_parse_diagnostics(const hpoea::config::ParseResult &result) {
@@ -120,6 +118,26 @@ bool has_blocking_plan_diagnostics(const hpoea::config::ValidationResult &result
     return false;
 }
 
+const hpoea::config::AlgorithmSpec *find_algorithm(const hpoea::config::SuiteConfig &config,
+                                                   std::string_view id) {
+    for (const auto &algorithm : config.algorithms) {
+        if (algorithm.id == id) {
+            return &algorithm;
+        }
+    }
+    return nullptr;
+}
+
+const hpoea::config::OptimizerSpec *find_optimizer(const hpoea::config::SuiteConfig &config,
+                                                   std::string_view id) {
+    for (const auto &optimizer : config.optimizers) {
+        if (optimizer.id == id) {
+            return &optimizer;
+        }
+    }
+    return nullptr;
+}
+
 void print_component_line(std::ostream &out,
                           std::string_view label,
                           const hpoea::cli::ComponentDispatch &annotation) {
@@ -128,6 +146,38 @@ void print_component_line(std::ostream &out,
         << " backend=" << annotation.backend
         << " dispatch=" << annotation.dispatch << '\n';
 }
+
+hpoea::core::Budget to_core_budget(const hpoea::config::BudgetConfig &budget) {
+    hpoea::core::Budget result;
+    result.generations = budget.generations;
+    result.function_evaluations = budget.function_evaluations;
+    return result;
+}
+
+std::string run_status_to_string(hpoea::core::RunStatus status) {
+    using hpoea::core::RunStatus;
+    switch (status) {
+    case RunStatus::Success:
+        return "success";
+    case RunStatus::BudgetExceeded:
+        return "budget_exceeded";
+    case RunStatus::FailedEvaluation:
+        return "failed_evaluation";
+    case RunStatus::InvalidConfiguration:
+        return "invalid_configuration";
+    case RunStatus::InternalError:
+        return "internal_error";
+    }
+    return "unknown";
+}
+
+bool is_command_failure_status(hpoea::core::RunStatus status) {
+    using hpoea::core::RunStatus;
+    return status == RunStatus::FailedEvaluation
+        || status == RunStatus::InvalidConfiguration
+        || status == RunStatus::InternalError;
+}
+
 
 int run_validate(const std::filesystem::path &path) {
     const auto config = parse_suite_config(path);
@@ -184,6 +234,112 @@ int run_plan(const std::filesystem::path &path) {
     return 0;
 }
 
+std::optional<hpoea::core::ExperimentConfig> make_experiment_config(
+    const hpoea::config::SuiteConfig &suite,
+    const hpoea::config::ResolvedRunSpec &run) {
+    const auto *algorithm = find_algorithm(suite, run.algorithm_id);
+    const auto *optimizer = find_optimizer(suite, run.optimizer_id);
+    if (!algorithm) {
+        std::cerr << "error: run " << run.run_id << ": missing algorithm id: "
+                  << run.algorithm_id << '\n';
+        return std::nullopt;
+    }
+    if (!optimizer) {
+        std::cerr << "error: run " << run.run_id << ": missing optimizer id: "
+                  << run.optimizer_id << '\n';
+        return std::nullopt;
+    }
+
+    hpoea::core::ExperimentConfig config;
+    config.experiment_id = run.run_id;
+    config.trials_per_optimizer = 1;
+    config.islands = 1;
+    config.algorithm_budget = to_core_budget(run.algorithm_budget);
+    config.optimizer_budget = to_core_budget(run.optimizer_budget);
+    config.log_file_path = run.planned_output_path;
+    config.random_seed = static_cast<unsigned long>(run.seed);
+    if (!algorithm->fixed_parameters.empty()) {
+        config.algorithm_baseline_parameters = algorithm->fixed_parameters;
+    }
+    if (!optimizer->parameters.empty()) {
+        config.optimizer_parameters = optimizer->parameters;
+    }
+    return config;
+}
+
+bool create_parent_directory(const std::filesystem::path &path) {
+    const auto parent = path.parent_path();
+    if (parent.empty()) {
+        return true;
+    }
+    std::filesystem::create_directories(parent);
+    return true;
+}
+
+int run_config(const std::filesystem::path &path) {
+    const auto config = parse_suite_config(path);
+    if (!config.has_value()) {
+        return 1;
+    }
+
+    const auto validation = hpoea::config::validate_suite_config(*config);
+    print_validation_diagnostics(validation);
+    if (!validation.ok()) {
+        return 1;
+    }
+
+    const auto expansion = hpoea::config::expand_suite_config(*config);
+    print_expansion_diagnostics(expansion);
+    if (!expansion.ok()) {
+        return 1;
+    }
+
+    bool had_failed_status = false;
+    try {
+        for (const auto &run : expansion.runs) {
+            auto experiment_config = make_experiment_config(*config, run);
+            if (!experiment_config.has_value()) {
+                return 1;
+            }
+
+            create_parent_directory(experiment_config->log_file_path);
+            auto dispatch = hpoea::cli::make_dispatch_objects(*config, run);
+            if (!dispatch.ok()) {
+                for (const auto &error : dispatch.errors) {
+                    std::cerr << "error: run " << run.run_id << ": " << error << '\n';
+                }
+                return 1;
+            }
+
+            hpoea::core::JsonlLogger logger{experiment_config->log_file_path};
+            hpoea::core::SequentialExperimentManager manager;
+            const auto result = manager.run_experiment(
+                *experiment_config,
+                *dispatch.objects.optimizer,
+                *dispatch.objects.algorithm_factory,
+                *dispatch.objects.problem,
+                logger);
+
+            std::cout << "ran: " << run.run_id << '\n';
+            std::cout << "  output: " << experiment_config->log_file_path.generic_string() << '\n';
+            std::cout << "  optimizer_runs: " << result.optimizer_results.size() << '\n';
+            std::cout << "  records: " << logger.records_written() << '\n';
+            for (const auto &optimizer_result : result.optimizer_results) {
+                const auto status = run_status_to_string(optimizer_result.status);
+                std::cout << "  status: " << status << '\n';
+                if (is_command_failure_status(optimizer_result.status)) {
+                    had_failed_status = true;
+                }
+            }
+        }
+    } catch (const std::exception &exception) {
+        std::cerr << "error: " << exception.what() << '\n';
+        return 1;
+    }
+
+    return had_failed_status ? 1 : 0;
+}
+
 int require_single_config_arg(int argc,
                               char **argv,
                               int (*handler)(const std::filesystem::path &)) {
@@ -219,7 +375,7 @@ int main(int argc, char **argv) {
         return require_single_config_arg(argc, argv, run_plan);
     }
     if (command == "run") {
-        return command_not_ready(command);
+        return require_single_config_arg(argc, argv, run_config);
     }
 
     return usage_error("unknown command: " + std::string{command});

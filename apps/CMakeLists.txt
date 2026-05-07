@@ -9,6 +9,9 @@ target_compile_definitions(cli
     PRIVATE
         HPOEA_PROJECT_VERSION="${PROJECT_VERSION}"
 )
+if (HPOEA_WITH_PAGMO)
+    target_link_libraries(cli PRIVATE hpoea_pagmo)
+endif ()
 
 if (HPOEA_WITH_PAGMO)
     add_executable(hpoea_simple_example simple_example.cpp)
