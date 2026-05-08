@@ -1,8 +1,11 @@
 # HPOEA reference
 
-This page is the detailed HPOEA reference for build modes, CMake integration, config files, parameters, logging, reproducibility, and troubleshooting.
+This page is the detailed HPOEA reference for build modes, the CLI, CMake
+integration, config files, parameters, logging, reproducibility, and
+troubleshooting.
 
-The root `README.md` stays focused on orientation. `apps/README.md` is for runnable examples. `docs/extending_algos.md` is for extension work.
+The root `README.md` stays focused on orientation. `apps/README.md` is for the
+CLI and runnable examples. `docs/extending_algos.md` is for extension work.
 
 ## Build and dependencies
 
@@ -47,6 +50,50 @@ The helper script runs the core suite by default and can opt into Pagmo:
 ./run_tests.sh
 ./run_tests.sh --with-pagmo --pagmo-dir /path/to/pagmo/lib/cmake/pagmo
 ```
+
+## Command-line interface
+
+The build creates `hpoea` in the `apps` build directory. It is available in
+core-only and Pagmo-enabled builds.
+
+Core-only command examples:
+
+```bash
+./build/hpoea-core/apps/hpoea --help
+./build/hpoea-core/apps/hpoea validate tests/fixtures/configs/custom_ids_valid.toml
+./build/hpoea-core/apps/hpoea plan examples/configs/basic_experiment.toml
+```
+
+Commands:
+
+- `validate <config.toml>` parses TOML and validates it for the current build.
+- `plan <config.toml>` parses and expands the suite, prints run ids, seeds,
+  planned JSONL paths, backend status, and dispatch status, and does not create
+  output files or directories.
+- `run <config.toml>` validates, expands, checks that every run is supported,
+  creates output directories, and runs them with `core::SequentialExperimentManager`.
+
+`validate` is strict about the current build. A core-only build rejects Pagmo
+type ids, so `examples/configs/basic_experiment.toml` only validates in a
+Pagmo-enabled build. `plan` can still preview that config in a core-only build
+when the only validation issue is the missing Pagmo backend. It marks those
+runs as not runnable.
+
+Pagmo-enabled run example:
+
+```bash
+./build/hpoea-pagmo/apps/hpoea run examples/configs/basic_experiment.toml
+```
+
+For now, `run` supports configs that use:
+
+- problem type `sphere`
+- algorithm type `de`
+- optimizer type `cmaes`
+
+Other problem, algorithm, or optimizer type ids return an unsupported dispatch
+error for now. The parser and validator can still accept custom type ids where
+their current rules allow them.
 
 ## Using HPOEA from CMake
 
@@ -367,7 +414,8 @@ The built-in benchmark problems and `apps/benchmark_suite.cpp` are small benchma
 
 - **CMake cannot find Pagmo2:** `-DPagmo_DIR=/path/to/pagmo/lib/cmake/pagmo` points CMake at the directory that contains `PagmoConfig.cmake` or `pagmo-config.cmake`.
 - **CMA-ES or Nelder-Mead paths fail:** Pagmo2 needs Eigen3 support for CMA-ES and NLopt support for `pagmo::nlopt`.
-- **Examples are missing:** app executables are built only with `-DHPOEA_WITH_PAGMO=ON`; a core-only build skips them.
+- **Examples are missing:** Pagmo-backed example executables are built only with
+  `-DHPOEA_WITH_PAGMO=ON`; the CLI still builds in a core-only build.
 - **Tests are missing:** test executables are built only with `-DHPOEA_BUILD_TESTS=ON`; CTest reads tests from the matching build tree.
 - **JSONL logs contain old records:** `JsonlLogger` appends; a clean rerun starts from a new or empty log file.
 - **Config validation rejects a suite:** `examples/configs/basic_experiment.toml` shows the supported top-level shape. Unknown fields, unsupported search modes, and known Pagmo-backed type ids without a Pagmo-enabled build can all produce diagnostics.
