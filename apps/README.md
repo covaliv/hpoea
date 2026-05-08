@@ -1,12 +1,25 @@
-# Example programs
+# CLI and example programs
 
-The programs in this directory are focused, runnable examples for the Pagmo-backed part of HPOEA.
+This directory contains the `hpoea` CLI and runnable examples for the
+Pagmo-backed part of HPOEA.
 
-They are built only when CMake is configured with `HPOEA_WITH_PAGMO=ON`.
+The CLI is built in core-only and Pagmo-enabled builds.
+The example programs are built only when CMake is configured with
+`HPOEA_WITH_PAGMO=ON`.
 
-Build commands, dependency details, and parameter/config references are in [docs/reference.md](../docs/reference.md).
+Build commands, dependency details, and parameter/config references are in
+[docs/reference.md](../docs/reference.md).
 
 ## Build
+
+Core-only CLI build:
+
+```bash
+cmake -S . -B build/hpoea-core -DHPOEA_BUILD_TESTS=ON
+cmake --build build/hpoea-core --target cli
+```
+
+Pagmo-enabled CLI and example build:
 
 ```bash
 cmake -S . -B build/hpoea-pagmo \
@@ -16,6 +29,27 @@ cmake --build build/hpoea-pagmo
 ```
 
 The same build tree includes tests when configured with `-DHPOEA_BUILD_TESTS=ON`.
+
+## CLI
+
+Basic commands:
+
+```bash
+./build/hpoea-core/apps/hpoea --help
+./build/hpoea-core/apps/hpoea validate tests/fixtures/configs/custom_ids_valid.toml
+./build/hpoea-core/apps/hpoea plan examples/configs/basic_experiment.toml
+```
+
+`validate` checks a config for the current build. `plan` expands the suite and
+prints the planned runs without creating output directories or log files.
+
+In a Pagmo-enabled build, `run` can execute supported configs:
+
+```bash
+./build/hpoea-pagmo/apps/hpoea run examples/configs/basic_experiment.toml
+```
+
+For now, `run` supports configs that use `sphere`, `de`, and `cmaes`.
 
 ## Introductory examples
 
@@ -95,6 +129,15 @@ Examples that use `core::JsonlLogger` write JSON Lines files. Each line is one l
 Existing files are appended to. A clean rerun starts from a new or empty log file. Exact fields are in the [logging schema](../docs/reference.md#logging-schema).
 
 ## Full executable list
+
+CLI executable:
+
+```bash
+./build/hpoea-core/apps/hpoea
+./build/hpoea-pagmo/apps/hpoea
+```
+
+Pagmo-enabled examples and check programs:
 
 ```bash
 ./build/hpoea-pagmo/apps/basic_ea_example

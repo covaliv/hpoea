@@ -69,6 +69,19 @@ cmake --build build/hpoea-core
 ctest --test-dir build/hpoea-core -L hpoea-core --output-on-failure
 ```
 
+The build also creates the `hpoea` command-line tool:
+
+```bash
+./build/hpoea-core/apps/hpoea --help
+./build/hpoea-core/apps/hpoea validate tests/fixtures/configs/custom_ids_valid.toml
+./build/hpoea-core/apps/hpoea plan examples/configs/basic_experiment.toml
+```
+
+`validate` checks a config for the current build. In a core-only build,
+`examples/configs/basic_experiment.toml` does not validate because it uses
+Pagmo-backed `de` and `cmaes` type ids. `plan` can still show the expanded
+runs and mark the Pagmo parts as unavailable.
+
 Pagmo2 wrapper and example build:
 
 ```bash
@@ -85,6 +98,14 @@ Small example executables:
 ./build/hpoea-pagmo/apps/basic_ea_example
 ./build/hpoea-pagmo/apps/basic_hpo_example
 ```
+
+In a Pagmo-enabled build, the CLI can run the supported built-in path:
+
+```bash
+./build/hpoea-pagmo/apps/hpoea run examples/configs/basic_experiment.toml
+```
+
+For now, `run` supports configs that use `sphere`, `de`, and `cmaes`.
 
 The helper script provides the same checks:
 
@@ -149,8 +170,8 @@ The full mental model is in [docs/reference.md#core-concepts](docs/reference.md#
 ## Documentation map
 
 - [README.md](README.md): project overview, requirements, quick start, and minimal example.
-- [apps/README.md](apps/README.md): example programs and executable names.
-- [docs/reference.md](docs/reference.md): build, CMake integration, concepts, config, parameters, logging, reproducibility, benchmarking, and troubleshooting.
+- [apps/README.md](apps/README.md): CLI commands, example programs, and executable names.
+- [docs/reference.md](docs/reference.md): build, CLI, CMake integration, concepts, config, parameters, logging, reproducibility, benchmarking, and troubleshooting.
 - [docs/extending_algos.md](docs/extending_algos.md): project shape for new algorithms, optimizers, and problems.
 
 ## Experiment records
