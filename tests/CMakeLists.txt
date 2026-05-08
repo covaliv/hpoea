@@ -72,7 +72,32 @@ target_compile_definitions(hpoea_suite_expander_tests
         HPOEA_PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
 )
 
+hpoea_add_test(cli_tests cli_tests.cpp
+    LABEL hpoea-core
+    LIBS hpoea_core)
+add_dependencies(cli_tests cli)
+target_compile_definitions(cli_tests
+    PRIVATE
+        HPOEA_PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+        CLI_EXECUTABLE="$<TARGET_FILE:cli>"
+        HPOEA_PROJECT_VERSION="${PROJECT_VERSION}"
+)
+
 if (HPOEA_WITH_PAGMO)
+    set_tests_properties(cli_tests
+        PROPERTIES LABELS "hpoea-core;hpoea-pagmo")
+endif ()
+
+if (HPOEA_WITH_PAGMO)
+    hpoea_add_test(cli_pagmo_smoke_tests cli_pagmo_smoke_tests.cpp
+        LABEL hpoea-pagmo
+        LIBS hpoea_core)
+    add_dependencies(cli_pagmo_smoke_tests cli)
+    target_compile_definitions(cli_pagmo_smoke_tests
+        PRIVATE
+            CLI_EXECUTABLE="$<TARGET_FILE:cli>"
+    )
+
     hpoea_add_test(hpoea_problem_adapter_tests problem_adapter_tests.cpp
         LABEL hpoea-pagmo
         LIBS hpoea_pagmo hpoea_core

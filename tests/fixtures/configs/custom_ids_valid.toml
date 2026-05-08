@@ -1,0 +1,31 @@
+schema_version = 1
+
+[suite]
+name = "custom_ids"
+output_dir = "results/custom_ids"
+suite_seed = 77
+repetitions = 1
+
+[problems.local_problem]
+type = "local_problem"
+
+[algorithms.local_algorithm]
+type = "local_algorithm"
+fixed = { population_size = 12 }
+
+[optimizers.local_optimizer]
+type = "local_optimizer"
+parameters = { generations = 1 }
+
+[[experiments]]
+id = "custom_id_run"
+problem = "local_problem"
+algorithm = "local_algorithm"
+optimizer = "local_optimizer"
+seed = 11
+
+[experiments.algorithm_budget]
+generations = 1
+
+[experiments.optimizer_budget]
+function_evaluations = 1
