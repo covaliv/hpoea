@@ -43,6 +43,10 @@ hpoea_add_test(hpoea_transform_bounds_tests transform_bounds_tests.cpp
     LABEL hpoea-core
     LIBS hpoea_core)
 
+hpoea_add_test(hpoea_random_search_optimizer_tests random_search_optimizer_tests.cpp
+    LABEL hpoea-core
+    LIBS hpoea_core)
+
 hpoea_add_test(hpoea_config_parser_tests config_parser_tests.cpp
     LABEL hpoea-core
     LIBS hpoea_core)

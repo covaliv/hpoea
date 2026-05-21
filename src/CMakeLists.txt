@@ -7,6 +7,7 @@ set(HPOEA_CORE_SOURCES
     core/experiment.cpp
     core/logging.cpp
     core/parameters.cpp
+    core/random_search_optimizer.cpp
     core/search_space.cpp
     wrappers/problems/benchmark_problems.cpp
 )

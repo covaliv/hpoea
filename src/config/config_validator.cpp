@@ -44,6 +44,10 @@ constexpr std::array<std::string_view, 6> pagmo_algorithm_type_ids{
     "cmaes"
 };
 
+constexpr std::array<std::string_view, 1> core_optimizer_type_ids{
+    "random_search"
+};
+
 constexpr std::array<std::string_view, 4> pagmo_optimizer_type_ids{
     "cmaes",
     "pso",
@@ -222,6 +226,9 @@ private:
                                  const std::string &path) {
         if (type.empty()) {
             add_error(path, "optimizer type must not be empty");
+            return;
+        }
+        if (contains(core_optimizer_type_ids, type)) {
             return;
         }
         if (contains(pagmo_optimizer_type_ids, type) && !build_has_pagmo()) {
