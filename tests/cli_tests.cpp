@@ -137,6 +137,41 @@ function_evaluations = 1
 )";
 }
 
+std::string random_search_config_with_output_dir(const std::filesystem::path &output_dir) {
+    return R"(schema_version = 1
+
+[suite]
+name = "random_search_cli"
+output_dir = ")" + output_dir.generic_string() + R"("
+suite_seed = 77
+repetitions = 1
+
+[problems.sphere]
+type = "sphere"
+dimension = 2
+
+[algorithms.de_default]
+type = "de"
+
+[optimizers.rs]
+type = "random_search"
+parameters = { sample_count = 2 }
+
+[[experiments]]
+id = "sphere_de_random"
+problem = "sphere"
+algorithm = "de_default"
+optimizer = "rs"
+seed = 11
+
+[experiments.algorithm_budget]
+generations = 1
+
+[experiments.optimizer_budget]
+function_evaluations = 2
+)";
+}
+
 bool contains(const std::string &text,
               const std::string &needle) {
     return text.find(needle) != std::string::npos;
@@ -228,6 +263,57 @@ int main() {
                        "validate reports unavailable cmaes");
 #endif
     }
+
+    {
+        const auto output_dir = work_dir / "random-search-plan-output";
+        const auto config_path = work_dir / "random_search_plan.toml";
+        write_file(config_path, random_search_config_with_output_dir(output_dir));
+        std::filesystem::remove_all(output_dir);
+
+        const auto result = run_cli({"plan", config_path.string()}, work_dir);
+        HPOEA_V2_CHECK(runner, result.exit_code == 0,
+                       "plan previews random_search config");
+        HPOEA_V2_CHECK(runner, result.stderr_text.empty(),
+                       "random_search plan preview has no stderr");
+        HPOEA_V2_CHECK(runner, contains(result.stdout_text,
+                                       "optimizer: rs type=random_search backend=core dispatch=supported"),
+                       "plan preview annotates random_search as core supported");
+#if defined(HPOEA_CONFIG_HAS_PAGMO)
+        HPOEA_V2_CHECK(runner, contains(result.stdout_text, "runnable: yes"),
+                       "Pagmo plan preview marks random_search run runnable with de");
+#else
+        HPOEA_V2_CHECK(runner, contains(result.stdout_text,
+                                       "algorithm: de_default type=de backend=pagmo-unavailable dispatch=requires-pagmo"),
+                       "core-only random_search plan still reports unavailable de");
+        HPOEA_V2_CHECK(runner, contains(result.stdout_text, "runnable: no"),
+                       "core-only random_search plan is not runnable without de backend");
+#endif
+        HPOEA_V2_CHECK(runner, !std::filesystem::exists(output_dir),
+                       "random_search plan preview does not create output directory");
+    }
+
+#if !defined(HPOEA_CONFIG_HAS_PAGMO)
+    {
+        const auto output_dir = work_dir / "random-search-run-output";
+        const auto config_path = work_dir / "random_search_run.toml";
+        write_file(config_path, random_search_config_with_output_dir(output_dir));
+        std::filesystem::remove_all(output_dir);
+
+        const auto result = run_cli({"run", config_path.string()}, work_dir);
+        HPOEA_V2_CHECK(runner, result.exit_code != 0,
+                       "core-only random_search run fails without de backend");
+        HPOEA_V2_CHECK(runner, result.stdout_text.empty(),
+                       "core-only random_search run failure has no stdout");
+        HPOEA_V2_CHECK(runner, contains(result.stderr_text,
+                                       "algorithm type requires a Pagmo-enabled build: de"),
+                       "core-only random_search run reports unavailable de");
+        HPOEA_V2_CHECK(runner, !contains(result.stderr_text,
+                                        "unsupported dispatch for optimizer type: random_search"),
+                       "core-only random_search run does not reject random_search optimizer");
+        HPOEA_V2_CHECK(runner, !std::filesystem::exists(output_dir),
+                       "core-only random_search run does not create output directory");
+    }
+#endif
 
     {
         const auto output_dir = work_dir / "plan-output";

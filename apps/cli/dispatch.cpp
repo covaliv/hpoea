@@ -1,5 +1,6 @@
 #include "dispatch.hpp"
 
+#include "hpoea/core/random_search_optimizer.hpp"
 #include "hpoea/core/search_space.hpp"
 #include "hpoea/wrappers/problems/benchmark_problems.hpp"
 
@@ -134,6 +135,9 @@ hpoea::cli::ComponentDispatch annotate_optimizer(const OptimizerSpec *optimizer,
     if (!optimizer) {
         return {std::string{id}, "<missing>", "missing", "unsupported", false};
     }
+    if (optimizer->type == "random_search") {
+        return {optimizer->id, optimizer->type, "core", "supported", true};
+    }
     if (optimizer->type == "cmaes") {
         return {optimizer->id,
                 optimizer->type,
@@ -257,7 +261,6 @@ std::unique_ptr<hpoea::core::IEvolutionaryAlgorithmFactory> make_algorithm_facto
 #endif
 }
 
-#if defined(HPOEA_CONFIG_HAS_PAGMO)
 std::shared_ptr<hpoea::core::SearchSpace> make_algorithm_search_space(
     const AlgorithmSpec &algorithm,
     std::vector<std::string> &errors) {
@@ -267,7 +270,7 @@ std::shared_ptr<hpoea::core::SearchSpace> make_algorithm_search_space(
 
     auto search = std::make_shared<hpoea::core::SearchSpace>();
     for (const auto &[name, spec] : algorithm.search_parameters) {
-        // search-space entries constrain what the hyper-optimizer may tune
+        // search-space entries constrain what the hyper-optimizer may tune.
         switch (spec.mode) {
         case SearchParameterMode::Range:
             if (!spec.continuous_range.has_value()) {
@@ -296,13 +299,22 @@ std::shared_ptr<hpoea::core::SearchSpace> make_algorithm_search_space(
 
     return search;
 }
-#endif
 
 std::unique_ptr<hpoea::core::IHyperparameterOptimizer> make_optimizer(
     const OptimizerSpec &optimizer,
     const AlgorithmSpec &algorithm,
     const hpoea::core::IEvolutionaryAlgorithmFactory &algorithm_factory,
     std::vector<std::string> &errors) {
+    if (optimizer.type == "random_search") {
+        auto random_search = std::make_unique<hpoea::core::RandomSearchOptimizer>();
+        auto search = make_algorithm_search_space(algorithm, errors);
+        if (search) {
+            search->validate(algorithm_factory.parameter_space());
+            random_search->set_search_space(std::move(search));
+        }
+        return random_search;
+    }
+
     if (optimizer.type != "cmaes") {
         add_unsupported_error(errors, "optimizer", optimizer.type);
         return nullptr;
@@ -366,9 +378,9 @@ DispatchResult make_dispatch_objects(const SuiteConfig &config,
         if (result.objects.algorithm_factory) {
             result.objects.optimizer = make_optimizer(
                 *optimizer, *algorithm, *result.objects.algorithm_factory, result.errors);
-        } else if (optimizer->type != "cmaes") {
+        } else if (optimizer->type != "random_search" && optimizer->type != "cmaes") {
             add_unsupported_error(result.errors, "optimizer", optimizer->type);
-        } else if (!build_has_pagmo()) {
+        } else if (optimizer->type == "cmaes" && !build_has_pagmo()) {
             result.errors.push_back("optimizer type requires a Pagmo-enabled build: cmaes");
         }
     } catch (const std::exception &exception) {
