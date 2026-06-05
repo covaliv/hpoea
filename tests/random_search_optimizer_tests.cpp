@@ -4,6 +4,7 @@
 
 #include "hpoea/core/random_search_optimizer.hpp"
 
+#include <chrono>
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -297,8 +298,11 @@ int main() {
         auto repeat_result = repeat.optimize(repeat_factory, problem, {}, {}, 77UL);
         HPOEA_V2_CHECK(runner, trial_parameters_equal(result.trials, repeat_result.trials),
                        "same seed reproduces sampled parameters");
-        HPOEA_V2_CHECK(runner, factory.observations().front().seed == repeat_factory.observations().front().seed,
-                       "same seed reproduces derived inner seeds");
+        bool same_inner_seeds = factory.observations().size() == repeat_factory.observations().size();
+        for (std::size_t i = 0; same_inner_seeds && i < factory.observations().size(); ++i) {
+            same_inner_seeds = factory.observations()[i].seed == repeat_factory.observations()[i].seed;
+        }
+        HPOEA_V2_CHECK(runner, same_inner_seeds, "same seed reproduces derived inner seeds");
     }
 
 
@@ -322,6 +326,15 @@ int main() {
         HPOEA_V2_CHECK(runner, zero.status == hpoea::core::RunStatus::BudgetExceeded,
                        "zero optimizer budget returns BudgetExceeded");
         HPOEA_V2_CHECK(runner, zero.trials.empty(), "zero optimizer budget records no trials");
+
+        hpoea::core::Budget wall_time;
+        wall_time.wall_time = std::chrono::milliseconds{0};
+        auto timed_out = optimizer.optimize(factory, problem, wall_time, {}, 7UL);
+        HPOEA_V2_CHECK(runner, timed_out.status == hpoea::core::RunStatus::BudgetExceeded,
+                       "zero wall-time budget returns BudgetExceeded");
+        HPOEA_V2_CHECK(runner, timed_out.trials.empty(), "zero wall-time budget records no trials");
+        HPOEA_V2_CHECK(runner, timed_out.optimizer_usage.objective_calls == 0u,
+                       "zero wall-time budget skips objective calls");
     }
 
 

@@ -8,7 +8,7 @@
 namespace hpoea::core {
 
 class RandomSearchOptimizer final : public IHyperparameterOptimizer {
-  public:
+public:
     RandomSearchOptimizer();
     RandomSearchOptimizer(const RandomSearchOptimizer &other);
 
@@ -33,7 +33,7 @@ class RandomSearchOptimizer final : public IHyperparameterOptimizer {
                                                             const Budget &algorithm_budget,
                                                             unsigned long seed) override;
 
-  private:
+private:
     ParameterSpace parameter_space_;
     ParameterSet configured_parameters_;
     AlgorithmIdentity identity_;

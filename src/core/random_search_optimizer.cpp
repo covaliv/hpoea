@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cmath>
 #include <limits>
 #include <optional>
@@ -46,18 +47,24 @@ std::size_t get_sample_count(const hpoea::core::ParameterSet &parameters) {
     return static_cast<std::size_t>(value);
 }
 
-unsigned long splitmix64(unsigned long x) {
+std::uint64_t splitmix64(std::uint64_t x) {
+    constexpr std::uint64_t first_multiplier = 0xbf58476d1ce4e5b9ULL;
+    constexpr std::uint64_t second_multiplier = 0x94d049bb133111ebULL;
+
     x ^= x >> 30;
-    x *= 0xbf58476d1ce4e5b9UL;
+    x *= first_multiplier;
     x ^= x >> 27;
-    x *= 0x94d049bb133111ebUL;
+    x *= second_multiplier;
     x ^= x >> 31;
     return x;
 }
 
 unsigned long derive_trial_seed(unsigned long seed, std::size_t trial_index) {
-    const auto salt = static_cast<unsigned long>(trial_index + 1u);
-    return splitmix64(seed ^ (salt * 0x9e3779b97f4a7c15UL));
+    constexpr std::uint64_t salt_multiplier = 0x9e3779b97f4a7c15ULL;
+
+    const auto salt = static_cast<std::uint64_t>(trial_index + 1u);
+    const auto mixed = splitmix64(static_cast<std::uint64_t>(seed) ^ (salt * salt_multiplier));
+    return static_cast<unsigned long>(mixed);
 }
 
 const hpoea::core::ParameterConfig *find_config(const hpoea::core::SearchSpace *search_space, const std::string &name) {
@@ -335,10 +342,20 @@ HyperparameterOptimizationResult RandomSearchOptimizer::optimize(const IEvolutio
             return result;
         }
 
-        std::mt19937_64 rng{splitmix64(seed)};
+        std::mt19937_64 rng{splitmix64(static_cast<std::uint64_t>(seed))};
         result.trials.reserve(planned_samples);
+        bool stopped_for_wall_time = false;
 
         for (std::size_t trial_index = 0; trial_index < planned_samples; ++trial_index) {
+            if (optimizer_budget.wall_time.has_value()) {
+                const auto now = std::chrono::steady_clock::now();
+                const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time);
+                if (elapsed >= *optimizer_budget.wall_time) {
+                    stopped_for_wall_time = true;
+                    break;
+                }
+            }
+
             const auto trial_start = std::chrono::steady_clock::now();
             const auto trial_seed = derive_trial_seed(seed, trial_index);
             HyperparameterTrialRecord trial;
@@ -372,6 +389,10 @@ HyperparameterOptimizationResult RandomSearchOptimizer::optimize(const IEvolutio
         result.optimizer_usage.wall_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
 
         fill_success_result(result);
+        if (stopped_for_wall_time) {
+            result.status = RunStatus::BudgetExceeded;
+            result.message = "wall-time budget exceeded";
+        }
         apply_optimizer_budget_status(optimizer_budget, result.optimizer_usage, result.status, result.message);
     } catch (const std::exception &ex) {
         const auto end_time = std::chrono::steady_clock::now();
