@@ -49,7 +49,7 @@ In a Pagmo-enabled build, `run` can execute supported configs:
 ./build/hpoea-pagmo/apps/hpoea run examples/configs/basic_experiment.toml
 ```
 
-For now, `run` supports configs that use `sphere`, `de`, and `cmaes`.
+For now, `run` supports configs that use `sphere`, `de`, and either `cmaes` or `random_search`.
 
 ## Introductory examples
 
@@ -79,6 +79,7 @@ Together they cover:
 
 ### Tune hyperparameters
 
+- Random Search is available as a core hyperparameter optimizer for baseline comparisons.
 - `basic_hpo_example.cpp`: CMA-ES tunes Differential Evolution on Rosenbrock.
 - `knapsack_hpo_example.cpp`: CMA-ES tunes Differential Evolution on knapsack.
 - `knapsack_pso_sa_example.cpp`: Simulated Annealing tunes Particle Swarm Optimization on knapsack.

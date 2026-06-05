@@ -89,8 +89,10 @@ For now, `run` supports configs that use:
 
 - problem type `sphere`
 - algorithm type `de`
-- optimizer type `cmaes`
+- optimizer type `cmaes` or `random_search`
 
+`random_search` is a core optimizer, but the built-in `de` algorithm dispatch is
+still Pagmo-backed, so full CLI runs using `de` require a Pagmo-enabled build.
 Other problem, algorithm, or optimizer type ids return an unsupported dispatch
 error for now. The parser and validator can still accept custom type ids where
 their current rules allow them.
@@ -241,12 +243,13 @@ Diagnostics:
 - Diagnostics include a severity and a path. Parse diagnostics also include the source name.
 - `Error` diagnostics are blocking. Warnings are for information when a future check adds them.
 
-Known Pagmo-backed config type ids:
+Known config type ids:
 
 | Kind | Type ids |
 |---|---|
-| Algorithms | `de`, `pso`, `sade`, `sga`, `de1220`, `cmaes` |
-| Hyperparameter optimizers | `cmaes`, `pso`, `simulated_annealing`, `nelder_mead` |
+| Core hyperparameter optimizers | `random_search` |
+| Pagmo-backed algorithms | `de`, `pso`, `sade`, `sga`, `de1220`, `cmaes` |
+| Pagmo-backed hyperparameter optimizers | `cmaes`, `pso`, `simulated_annealing`, `nelder_mead` |
 
 Type ids are open strings. The parser can read custom problem, algorithm, and optimizer ids, but it does not create those objects.
 Application dispatch code maps each id to the right problem, factory, or optimizer.
@@ -277,11 +280,11 @@ The C++ `core::SearchSpace` API can also search continuous parameters in a trans
 
 Transforms affect the values seen by the hyperparameter optimizer. Decoded values are converted back before the algorithm is configured.
 
-## Pagmo parameter reference
+## Parameter reference
 
 `core::ParameterSet` integer values use `std::int64_t`. Continuous values use `double`, booleans use `bool`, and categorical values use `std::string`. Concrete `ParameterSpace` validation treats bounds as inclusive.
 
-### Evolutionary algorithms
+### Pagmo evolutionary algorithms
 
 | Algorithm | Config id | Identity | Parameters |
 |---|---|---|---|
@@ -292,7 +295,13 @@ Transforms affect the values seen by the hyperparameter optimizer. Decoded value
 | Simple Genetic Algorithm | `sga` | `SGA` / `pagmo::sga` | `population_size` integer default `50` range `5..5000`; `generations` integer default `200` range `1..1000`; `crossover_probability` double default `0.9` range `0..1`; `mutation_probability` double default `0.02` range `0..1` |
 | CMA-ES | `cmaes` | `CMAES` / `pagmo::cmaes` | `population_size` integer default `50` range `5..5000`; `generations` integer default `100` range `1..1000`; `sigma0` double default `0.5` range `1e-6..5`; `ftol` double default `1e-6` range `0..1`; `xtol` double default `1e-6` range `0..1` |
 
-### Hyperparameter optimizers
+### Core hyperparameter optimizers
+
+| Optimizer | Config id | Identity | Parameters |
+|---|---|---|---|
+| Random Search | `random_search` | `RandomSearch` / `uniform_random` | `sample_count` integer default `100` range `1..100000` |
+
+### Pagmo hyperparameter optimizers
 
 | Optimizer | Config id | Identity | Parameters |
 |---|---|---|---|

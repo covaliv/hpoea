@@ -19,6 +19,7 @@ The core library builds without Pagmo2. `HPOEA_WITH_PAGMO=ON` adds Pagmo2 algori
 - JSON Lines logging for experiment records.
 - Config parsing and validation support.
 - Baseline optimizer for default or fixed-parameter comparisons.
+- Random Search optimizer for baseline hyperparameter tuning.
 
 ### Pagmo2 wrappers
 
@@ -31,7 +32,7 @@ When `HPOEA_WITH_PAGMO=ON`, the project builds wrappers for:
 - Simple Genetic Algorithm (`pagmo::sga`)
 - CMA-ES as an evolutionary algorithm (`pagmo::cmaes`)
 
-Hyperparameter optimizers include:
+Pagmo-backed hyperparameter optimizers include:
 
 - CMA-ES
 - Simulated Annealing
@@ -105,7 +106,7 @@ In a Pagmo-enabled build, the CLI can run the supported built-in path:
 ./build/hpoea-pagmo/apps/hpoea run examples/configs/basic_experiment.toml
 ```
 
-For now, `run` supports configs that use `sphere`, `de`, and `cmaes`.
+For now, `run` supports configs that use `sphere`, `de`, and either `cmaes` or `random_search`.
 
 The helper script provides the same checks:
 
