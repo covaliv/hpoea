@@ -5,6 +5,7 @@ set(HPOEA_CORE_SOURCES
     core/baseline_optimizer.cpp
     core/error_classification.cpp
     core/experiment.cpp
+    core/hyper_optimizer_base.cpp
     core/logging.cpp
     core/parameters.cpp
     core/random_search_optimizer.cpp

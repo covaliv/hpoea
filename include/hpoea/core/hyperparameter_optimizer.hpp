@@ -52,6 +52,13 @@ public:
 
     virtual void configure(const ParameterSet &parameters) = 0;
 
+    // values in effect
+    // logged when ExperimentConfig::optimizer_parameters is unset
+    [[nodiscard]] virtual const ParameterSet &configured_parameters() const noexcept {
+        static const ParameterSet empty;
+        return empty;
+    }
+
     [[nodiscard]] virtual HyperparameterOptimizationResult optimize(
         const IEvolutionaryAlgorithmFactory &algorithm_factory,
         const IProblem &problem,
