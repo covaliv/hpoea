@@ -7,28 +7,28 @@ readonly PAGMO_BUILD_DIR="build/hpoea-pagmo"
 
 show_help() {
     cat <<'EOF'
-Usage: ./run_tests.sh [--core-only] [--with-pagmo] [--pagmo-dir PATH] [--help]
+Usage: ./run_tests.sh [--core-only] [--no-pagmo] [--pagmo-dir PATH] [--help]
 
 Options:
   --core-only         Run only the core configure/build/test flow.
-  --with-pagmo        Run the core flow, then the Pagmo-enabled flow.
+  --no-pagmo          Skip the Pagmo-enabled flow (alias for --core-only).
   --pagmo-dir PATH    Pass PATH as -DPagmo_DIR=... for the Pagmo-enabled flow.
   --help              Show this help message.
 
 Examples:
   ./run_tests.sh
   ./run_tests.sh --core-only
-  ./run_tests.sh --with-pagmo
-  ./run_tests.sh --with-pagmo --pagmo-dir ~/.local/lib/cmake/pagmo
+  ./run_tests.sh --no-pagmo
+  ./run_tests.sh --pagmo-dir ~/.local/lib/cmake/pagmo
 
-By default, the script runs only the core build and core tests.
-Use --with-pagmo to opt into the Pagmo-enabled configure/build/test flow.
+By default, the script runs both the core and the Pagmo-enabled build/test flows.
+Use --core-only (or --no-pagmo) to skip the Pagmo-enabled flow.
 EOF
 }
 
 run_core_suite() {
     printf '%s\n' '=== Core test suite ==='
-    cmake -S . -B "$CORE_BUILD_DIR" -DHPOEA_BUILD_TESTS=ON
+    cmake -S . -B "$CORE_BUILD_DIR" -DCMAKE_BUILD_TYPE=Release -DHPOEA_BUILD_TESTS=ON
     cmake --build "$CORE_BUILD_DIR"
     ctest --test-dir "$CORE_BUILD_DIR" --show-only -L hpoea-core
     ctest --test-dir "$CORE_BUILD_DIR" -L hpoea-core --output-on-failure
@@ -38,6 +38,7 @@ run_pagmo_suite() {
     local -a cmake_args=(
         -S .
         -B "$PAGMO_BUILD_DIR"
+        -DCMAKE_BUILD_TYPE=Release
         -DHPOEA_BUILD_TESTS=ON
         -DHPOEA_WITH_PAGMO=ON
     )
@@ -53,7 +54,7 @@ error: failed to configure the Pagmo-enabled build.
 
 Make sure Pagmo is installed and discoverable by CMake.
 If it is installed in a non-standard location, rerun with:
-  ./run_tests.sh --with-pagmo --pagmo-dir /path/to/pagmo
+  ./run_tests.sh --pagmo-dir /path/to/pagmo
 EOF
         exit 1
     fi
@@ -63,12 +64,12 @@ EOF
     ctest --test-dir "$PAGMO_BUILD_DIR" -L hpoea-pagmo --output-on-failure
 }
 
-run_pagmo=false
+run_pagmo=true
 pagmo_dir="${Pagmo_DIR:-}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --core-only)
+        --core-only|--no-pagmo)
             run_pagmo=false
             shift
             ;;

@@ -18,10 +18,31 @@ jobs:
           sudo apt-get install -y build-essential cmake ninja-build
 
       - name: Configure core test build
-        run: cmake -S . -B build/hpoea-core -G Ninja -DHPOEA_BUILD_TESTS=ON
+        run: cmake -S . -B build/hpoea-core -G Ninja -DCMAKE_BUILD_TYPE=Release -DHPOEA_BUILD_TESTS=ON
 
       - name: Build core test targets
         run: cmake --build build/hpoea-core
 
       - name: Run core tests
         run: ctest --test-dir build/hpoea-core -L hpoea-core --output-on-failure
+
+  pagmo-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install build tools and Pagmo2
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build libpagmo-dev
+
+      - name: Configure Pagmo-enabled test build
+        run: cmake -S . -B build/hpoea-pagmo -G Ninja -DCMAKE_BUILD_TYPE=Release -DHPOEA_BUILD_TESTS=ON -DHPOEA_WITH_PAGMO=ON
+
+      - name: Build Pagmo-enabled test targets
+        run: cmake --build build/hpoea-pagmo
+
+      - name: Run Pagmo tests
+        run: ctest --test-dir build/hpoea-pagmo -L hpoea-pagmo --output-on-failure
