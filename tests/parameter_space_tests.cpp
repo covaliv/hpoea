@@ -3,8 +3,10 @@
 
 #include "hpoea/core/parameters.hpp"
 
+#include <functional>
 #include <limits>
 #include <string>
+#include <vector>
 
 using hpoea::core::ParameterDescriptor;
 using hpoea::core::ParameterSet;
@@ -54,106 +56,70 @@ int main() {
 
 
     {
-        ParameterSpace space;
-        ParameterDescriptor desc;
-        desc.name = "";
-        desc.type = ParameterType::Continuous;
-        desc.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
-        bool threw = false;
-        try {
-            space.add_descriptor(desc);
-        } catch (const ParameterValidationError &) {
-            threw = true;
+        // each add_descriptor rule that must reject a malformed descriptor
+        struct AddCase {
+            const char *label;
+            std::function<void(ParameterSpace &)> add;
+        };
+        const std::vector<AddCase> add_cases = {
+            {"empty descriptor name rejected", [](ParameterSpace &s) {
+                 ParameterDescriptor d;
+                 d.name = "";
+                 d.type = ParameterType::Continuous;
+                 d.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
+                 s.add_descriptor(d);
+             }},
+            {"duplicate descriptor name rejected", [](ParameterSpace &s) {
+                 ParameterDescriptor d;
+                 d.name = "dup";
+                 d.type = ParameterType::Continuous;
+                 d.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
+                 s.add_descriptor(d);
+                 s.add_descriptor(d);
+             }},
+            {"continuous descriptor requires bounds", [](ParameterSpace &s) {
+                 ParameterDescriptor d;
+                 d.name = "alpha";
+                 d.type = ParameterType::Continuous;
+                 s.add_descriptor(d);
+             }},
+            {"integer descriptor lower>upper rejected", [](ParameterSpace &s) {
+                 ParameterDescriptor d;
+                 d.name = "beta";
+                 d.type = ParameterType::Integer;
+                 d.integer_range = hpoea::core::IntegerRange{2, 1};
+                 s.add_descriptor(d);
+             }},
+            {"categorical descriptor requires choices", [](ParameterSpace &s) {
+                 ParameterDescriptor d;
+                 d.name = "mode";
+                 d.type = ParameterType::Categorical;
+                 s.add_descriptor(d);
+             }},
+            {"integer descriptor requires bounds", [](ParameterSpace &s) {
+                 ParameterDescriptor d;
+                 d.name = "beta";
+                 d.type = ParameterType::Integer;
+                 s.add_descriptor(d);
+             }},
+            {"continuous descriptor lower>upper rejected", [](ParameterSpace &s) {
+                 ParameterDescriptor d;
+                 d.name = "alpha";
+                 d.type = ParameterType::Continuous;
+                 d.continuous_range = hpoea::core::ContinuousRange{2.0, 1.0};
+                 s.add_descriptor(d);
+             }},
+        };
+        for (const auto &c : add_cases) {
+            ParameterSpace space;
+            bool threw = false;
+            try {
+                c.add(space);
+            } catch (const ParameterValidationError &) {
+                threw = true;
+            }
+            HPOEA_V2_CHECK(runner, threw, c.label);
         }
-        HPOEA_V2_CHECK(runner, threw, "empty descriptor name rejected");
-    }
-
-    {
-        ParameterSpace space;
-        ParameterDescriptor desc;
-        desc.name = "dup";
-        desc.type = ParameterType::Continuous;
-        desc.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
-        space.add_descriptor(desc);
-        bool threw = false;
-        try {
-            space.add_descriptor(desc);
-        } catch (const ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "duplicate descriptor name rejected");
-    }
-
-    {
-        ParameterSpace space;
-        ParameterDescriptor desc;
-        desc.name = "alpha";
-        desc.type = ParameterType::Continuous;
-        bool threw = false;
-        try {
-            space.add_descriptor(desc);
-        } catch (const ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "continuous descriptor requires bounds");
-    }
-
-    {
-        ParameterSpace space;
-        ParameterDescriptor desc;
-        desc.name = "beta";
-        desc.type = ParameterType::Integer;
-        desc.integer_range = hpoea::core::IntegerRange{2, 1};
-        bool threw = false;
-        try {
-            space.add_descriptor(desc);
-        } catch (const ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "integer descriptor lower>upper rejected");
-    }
-
-    {
-        ParameterSpace space;
-        ParameterDescriptor desc;
-        desc.name = "mode";
-        desc.type = ParameterType::Categorical;
-        bool threw = false;
-        try {
-            space.add_descriptor(desc);
-        } catch (const ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "categorical descriptor requires choices");
-    }
-
-    {
-        ParameterSpace space;
-        ParameterDescriptor desc;
-        desc.name = "beta";
-        desc.type = ParameterType::Integer;
-        bool threw = false;
-        try {
-            space.add_descriptor(desc);
-        } catch (const ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "integer descriptor requires bounds");
-    }
-
-    {
-        ParameterSpace space;
-        ParameterDescriptor desc;
-        desc.name = "alpha";
-        desc.type = ParameterType::Continuous;
-        desc.continuous_range = hpoea::core::ContinuousRange{2.0, 1.0};
-        bool threw = false;
-        try {
-            space.add_descriptor(desc);
-        } catch (const ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "continuous descriptor lower>upper rejected");
     }
 
 
@@ -178,85 +144,70 @@ int main() {
     {
         ParameterSpace space = make_space();
         ParameterSet values;
-        values.emplace("alpha", 0.25);
-        values.emplace("beta", std::int64_t{5});
-        values.emplace("mode", std::string{"slow"});
-        values.emplace("flag", false);
-        bool threw = false;
-        try {
-            space.validate(values);
-        } catch (const ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, !threw, "validate accepts correct types and bounds");
-    }
-
-    {
-        ParameterSpace space = make_space();
-        ParameterSet values;
-        values.emplace("alpha", 0.25);
-        bool threw = false;
-        try {
-            space.validate(values);
-        } catch (const ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "validate rejects missing required parameter");
-    }
-
-    {
-        ParameterSpace space = make_space();
-        ParameterSet values;
+        values.emplace("alpha", std::int64_t{1});
         values.emplace("beta", std::int64_t{2});
-        values.emplace("alpha", std::numeric_limits<double>::quiet_NaN());
         bool threw = false;
         try {
             space.validate(values);
         } catch (const ParameterValidationError &) {
             threw = true;
         }
-        HPOEA_V2_CHECK(runner, threw, "validate rejects NaN continuous value");
+        HPOEA_V2_CHECK(runner, !threw, "validate accepts int64 literal for continuous descriptor");
+
+        const auto applied = space.apply_defaults(values);
+        HPOEA_V2_CHECK(runner, std::holds_alternative<double>(applied.at("alpha")),
+                       "apply_defaults coerces int64 continuous value to double");
+        HPOEA_V2_CHECK(runner, std::get<double>(applied.at("alpha")) == 1.0,
+                       "coerced continuous value equals 1.0");
     }
 
-    {
-        ParameterSpace space = make_space();
-        ParameterSet values;
-        values.emplace("beta", std::int64_t{2});
-        values.emplace("alpha", 0.5);
-        values.emplace("mode", std::string{"unknown"});
-        bool threw = false;
-        try {
-            space.validate(values);
-        } catch (const ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "validate rejects invalid categorical choice");
-    }
 
     {
-        ParameterSpace space = make_space();
-        ParameterSet values;
-        values.emplace("unknown", 1.0);
-        bool threw = false;
-        try {
-            space.validate(values);
-        } catch (const ParameterValidationError &) {
-            threw = true;
+        // validate accepts a well-formed set
+        // rejects each way it can be malformed
+        struct ValidateCase {
+            const char *label;
+            bool expect_throw;
+            std::function<void(ParameterSet &)> fill;
+        };
+        const std::vector<ValidateCase> validate_cases = {
+            {"validate accepts correct types and bounds", false, [](ParameterSet &v) {
+                 v.emplace("alpha", 0.25);
+                 v.emplace("beta", std::int64_t{5});
+                 v.emplace("mode", std::string{"slow"});
+                 v.emplace("flag", false);
+             }},
+            {"validate rejects missing required parameter", true, [](ParameterSet &v) {
+                 v.emplace("alpha", 0.25);
+             }},
+            {"validate rejects NaN continuous value", true, [](ParameterSet &v) {
+                 v.emplace("beta", std::int64_t{2});
+                 v.emplace("alpha", std::numeric_limits<double>::quiet_NaN());
+             }},
+            {"validate rejects invalid categorical choice", true, [](ParameterSet &v) {
+                 v.emplace("beta", std::int64_t{2});
+                 v.emplace("alpha", 0.5);
+                 v.emplace("mode", std::string{"unknown"});
+             }},
+            {"validate rejects unknown parameter", true, [](ParameterSet &v) {
+                 v.emplace("unknown", 1.0);
+             }},
+            {"validate rejects type mismatch", true, [](ParameterSet &v) {
+                 v.emplace("beta", 1.5);
+             }},
+        };
+        for (const auto &c : validate_cases) {
+            ParameterSpace space = make_space();
+            ParameterSet values;
+            c.fill(values);
+            bool threw = false;
+            try {
+                space.validate(values);
+            } catch (const ParameterValidationError &) {
+                threw = true;
+            }
+            HPOEA_V2_CHECK(runner, threw == c.expect_throw, c.label);
         }
-        HPOEA_V2_CHECK(runner, threw, "validate rejects unknown parameter");
-    }
-
-    {
-        ParameterSpace space = make_space();
-        ParameterSet values;
-        values.emplace("beta", 1.5);
-        bool threw = false;
-        try {
-            space.validate(values);
-        } catch (const ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "validate rejects type mismatch");
     }
 
 

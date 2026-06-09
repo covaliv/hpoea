@@ -23,6 +23,17 @@ std::string parameter_type_to_string(hpoea::core::ParameterType type) {
     throw std::logic_error("unhandled ParameterType value");
 }
 
+// toml integer literals for continuous params arrive as int64
+// promote to double
+hpoea::core::ParameterValue coerce_continuous(const hpoea::core::ParameterDescriptor &descriptor,
+                                              const hpoea::core::ParameterValue &value) {
+    if (descriptor.type == hpoea::core::ParameterType::Continuous &&
+        std::holds_alternative<std::int64_t>(value)) {
+        return static_cast<double>(std::get<std::int64_t>(value));
+    }
+    return value;
+}
+
 } // namespace
 
 namespace hpoea::core {
@@ -99,7 +110,7 @@ ParameterSet ParameterSpace::apply_defaults(const ParameterSet &overrides) const
     for (const auto &[name, value] : overrides) {
         const auto &desc = descriptor(name);
         validate_value(desc, value);
-        result.emplace(name, value);
+        result.emplace(name, coerce_continuous(desc, value));
     }
 
     for (const auto &desc : descriptors_) {
@@ -109,7 +120,7 @@ ParameterSet ParameterSpace::apply_defaults(const ParameterSet &overrides) const
 
         if (desc.default_value.has_value()) {
             validate_value(desc, *desc.default_value);
-            result.emplace(desc.name, *desc.default_value);
+            result.emplace(desc.name, coerce_continuous(desc, *desc.default_value));
         } else if (desc.required) {
             throw ParameterValidationError("missing required parameter: " + desc.name);
         }
@@ -124,11 +135,15 @@ void ParameterSpace::validate_value(const ParameterDescriptor &descriptor, const
 
     switch (descriptor.type) {
     case ParameterType::Continuous: {
-        if (!std::holds_alternative<double>(value)) {
+        double numeric;
+        if (std::holds_alternative<double>(value)) {
+            numeric = std::get<double>(value);
+        } else if (std::holds_alternative<std::int64_t>(value)) {
+            numeric = static_cast<double>(std::get<std::int64_t>(value));
+        } else {
             message << " but received mismatched variant type";
             throw ParameterValidationError(message.str());
         }
-        const auto numeric = std::get<double>(value);
         if (!std::isfinite(numeric)) {
             message << " but received non-finite value";
             throw ParameterValidationError(message.str());
