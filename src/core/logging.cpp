@@ -52,23 +52,6 @@ std::string escape_json(std::string_view input) {
     return output;
 }
 
-std::string run_status_to_string(hpoea::core::RunStatus status) {
-    using hpoea::core::RunStatus;
-    switch (status) {
-    case RunStatus::Success:
-        return "success";
-    case RunStatus::BudgetExceeded:
-        return "budget_exceeded";
-    case RunStatus::FailedEvaluation:
-        return "failed_evaluation";
-    case RunStatus::InvalidConfiguration:
-        return "invalid_configuration";
-    case RunStatus::InternalError:
-        return "internal_error";
-    }
-    throw std::logic_error("unhandled RunStatus value");
-}
-
 std::string serialize_double(double value) {
     if (!std::isfinite(value)) return "null";
     std::ostringstream oss;
@@ -171,6 +154,26 @@ std::string serialize_error_info(const std::optional<hpoea::core::ErrorInfo> &er
 
 namespace hpoea::core {
 
+namespace detail {
+
+std::string run_status_to_string(RunStatus status) {
+    switch (status) {
+    case RunStatus::Success:
+        return "success";
+    case RunStatus::BudgetExceeded:
+        return "budget_exceeded";
+    case RunStatus::FailedEvaluation:
+        return "failed_evaluation";
+    case RunStatus::InvalidConfiguration:
+        return "invalid_configuration";
+    case RunStatus::InternalError:
+        return "internal_error";
+    }
+    return "unknown";
+}
+
+} // namespace detail
+
 JsonlLogger::JsonlLogger(std::filesystem::path file_path, bool auto_flush)
     : file_path_(std::move(file_path)), auto_flush_(auto_flush) {
     stream_.open(file_path_, std::ios::out | std::ios::app);
@@ -224,7 +227,7 @@ std::string serialize_run_record(const RunRecord &record) {
     }
     oss << "\"algorithm_parameters\":" << serialize_parameter_set(record.algorithm_parameters) << ',';
     oss << "\"optimizer_parameters\":" << serialize_parameter_set(record.optimizer_parameters) << ',';
-    oss << "\"status\":\"" << escape_json(run_status_to_string(record.status)) << "\",";
+    oss << "\"status\":\"" << escape_json(detail::run_status_to_string(record.status)) << "\",";
     oss << "\"objective_value\":" << serialize_double(record.objective_value) << ',';
     oss << "\"requested_budget\":" << serialize_budget_fields(record.requested_budget) << ',';
     oss << "\"effective_budget\":" << serialize_budget_fields(record.effective_budget) << ',';

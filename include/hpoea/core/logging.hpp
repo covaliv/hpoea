@@ -68,6 +68,13 @@ private:
     bool auto_flush_{true};
 };
 
+namespace detail {
+
+// in detail so a TU-local run_status_to_string never collides
+[[nodiscard]] std::string run_status_to_string(RunStatus status);
+
+} // namespace detail
+
 [[nodiscard]] std::string serialize_run_record(const RunRecord &record);
 
 } // namespace hpoea::core

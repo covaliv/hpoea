@@ -157,23 +157,6 @@ hpoea::core::Budget to_core_budget(const hpoea::config::BudgetConfig &budget) {
     return result;
 }
 
-std::string run_status_to_string(hpoea::core::RunStatus status) {
-    using hpoea::core::RunStatus;
-    switch (status) {
-    case RunStatus::Success:
-        return "success";
-    case RunStatus::BudgetExceeded:
-        return "budget_exceeded";
-    case RunStatus::FailedEvaluation:
-        return "failed_evaluation";
-    case RunStatus::InvalidConfiguration:
-        return "invalid_configuration";
-    case RunStatus::InternalError:
-        return "internal_error";
-    }
-    return "unknown";
-}
-
 bool is_command_failure_status(hpoea::core::RunStatus status) {
     using hpoea::core::RunStatus;
     return status == RunStatus::FailedEvaluation
@@ -356,7 +339,7 @@ int run_config(const std::filesystem::path &path) {
             std::cout << "  optimizer_runs: " << result.optimizer_results.size() << '\n';
             std::cout << "  records: " << logger.records_written() << '\n';
             for (const auto &optimizer_result : result.optimizer_results) {
-                const auto status = run_status_to_string(optimizer_result.status);
+                const auto status = hpoea::core::detail::run_status_to_string(optimizer_result.status);
                 std::cout << "  status: " << status << '\n';
                 if (is_command_failure_status(optimizer_result.status)) {
                     had_failed_status = true;

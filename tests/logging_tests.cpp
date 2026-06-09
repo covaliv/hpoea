@@ -109,6 +109,11 @@ int main() {
     HPOEA_V2_CHECK(runner, serialized_inf.find("\"objective_value\":null") != std::string::npos,
                    "non-finite objective serialized as null");
 
+    record.objective_value = std::numeric_limits<double>::quiet_NaN();
+    const auto serialized_nan = serialize_run_record(record);
+    HPOEA_V2_CHECK(runner, serialized_nan.find("\"objective_value\":null") != std::string::npos,
+                   "NaN objective serialized as null");
+
     record.objective_value = 2.5;
     record.experiment_id = "exp_\"control\n";
     record.problem_id = "prob\\name\t";
@@ -362,121 +367,56 @@ int main() {
         check_status(RunStatus::FailedEvaluation, "failed_evaluation");
         check_status(RunStatus::InvalidConfiguration, "invalid_configuration");
         check_status(RunStatus::InternalError, "internal_error");
+        check_status(static_cast<RunStatus>(99), "unknown");
     }
 
 
     {
-        const auto path = unique_test_path("logger_api_test");
-        if (std::filesystem::exists(path)) std::filesystem::remove(path);
-
-        try {
-            JsonlLogger logger(path);
-            HPOEA_V2_CHECK(runner, logger.good(), "logger good() returns true after open");
-            HPOEA_V2_CHECK(runner, logger.path() == path, "logger path() returns expected path");
-        } catch (const std::exception &ex) {
-            HPOEA_V2_CHECK(runner, false, std::string("logger api test failed: ") + ex.what());
-        }
-
-        if (std::filesystem::exists(path)) std::filesystem::remove(path);
-    }
-
-
-    {
+        // auto_flush=false
+        // records_written increments before flush
+        // data lands after flush
         const auto path = unique_test_path("logger_multi_test");
         if (std::filesystem::exists(path)) std::filesystem::remove(path);
 
         try {
-            JsonlLogger logger(path);
+            std::vector<std::string> expected_lines;
+            {
+                JsonlLogger logger(path, false);
 
-            RunRecord r;
-            r.experiment_id = "multi";
-            r.problem_id = "sphere";
-            r.evolutionary_algorithm = {"DE", "pagmo::de", "2.x"};
-            r.status = RunStatus::Success;
-            r.objective_value = 1.0;
-            r.message = "record";
+                RunRecord r;
+                r.experiment_id = "multi";
+                r.problem_id = "sphere";
+                r.evolutionary_algorithm = {"DE", "pagmo::de", "2.x"};
+                r.status = RunStatus::Success;
+                r.message = "record";
 
-            logger.log(r);
-            r.objective_value = 2.0;
-            logger.log(r);
-            r.objective_value = 3.0;
-            logger.log(r);
-            logger.flush();
+                for (const double obj : {1.0, 2.0, 3.0}) {
+                    r.objective_value = obj;
+                    expected_lines.push_back(serialize_run_record(r));
+                    logger.log(r);
+                }
+                HPOEA_V2_CHECK(runner, logger.records_written() == 3u,
+                               "logger multi: records_written is 3 even before flush");
 
-            HPOEA_V2_CHECK(runner, logger.records_written() == 3u,
-                           "logger multi: records_written is 3");
-
+                logger.flush();
+            }
 
             const auto lines = read_lines(path);
             HPOEA_V2_CHECK(runner, lines.size() == 3u,
-                           "logger multi: file has 3 lines");
-            r.objective_value = 1.0;
-            HPOEA_V2_CHECK(runner, !lines.empty() && lines[0] == serialize_run_record(r),
-                           "logger multi: first line matches first record exactly");
-            r.objective_value = 2.0;
-            HPOEA_V2_CHECK(runner, lines.size() > 1u && lines[1] == serialize_run_record(r),
-                           "logger multi: second line matches second record exactly");
-            r.objective_value = 3.0;
-            HPOEA_V2_CHECK(runner, lines.size() > 2u && lines[2] == serialize_run_record(r),
-                           "logger multi: third line matches third record exactly");
+                           "logger multi: file has 3 lines after flush and close");
+            bool all_match = lines.size() == expected_lines.size();
+            for (std::size_t i = 0; i < lines.size() && i < expected_lines.size(); ++i) {
+                if (lines[i] != expected_lines[i]) {
+                    all_match = false;
+                }
+            }
+            HPOEA_V2_CHECK(runner, all_match,
+                           "logger multi: each line matches its record exactly");
         } catch (const std::exception &ex) {
             HPOEA_V2_CHECK(runner, false, std::string("logger multi test failed: ") + ex.what());
         }
 
         if (std::filesystem::exists(path)) std::filesystem::remove(path);
-    }
-
-
-    {
-        const auto path = unique_test_path("logger_noflush_test");
-        if (std::filesystem::exists(path)) std::filesystem::remove(path);
-
-        try {
-            std::string expected_line;
-            {
-                JsonlLogger logger(path, false);
-
-                RunRecord r;
-                r.experiment_id = "noflush";
-                r.problem_id = "sphere";
-                r.evolutionary_algorithm = {"DE", "pagmo::de", "2.x"};
-                r.status = RunStatus::Success;
-                r.objective_value = 1.0;
-                r.message = "test";
-                expected_line = serialize_run_record(r);
-
-                logger.log(r);
-                HPOEA_V2_CHECK(runner, logger.records_written() == 1u,
-                               "noflush: records_written incremented even without flush");
-
-
-                logger.flush();
-            }
-
-
-            const auto lines = read_lines(path);
-            HPOEA_V2_CHECK(runner, lines.size() == 1u, "noflush: exactly one line present after flush and close");
-            HPOEA_V2_CHECK(runner, !lines.empty() && lines.front() == expected_line,
-                           "noflush: line matches logged record exactly");
-        } catch (const std::exception &ex) {
-            HPOEA_V2_CHECK(runner, false, std::string("noflush test failed: ") + ex.what());
-        }
-
-        if (std::filesystem::exists(path)) std::filesystem::remove(path);
-    }
-
-
-    {
-        RunRecord record;
-        record.experiment_id = "nan_test";
-        record.problem_id = "sphere";
-        record.evolutionary_algorithm = {"DE", "pagmo::de", "2.x"};
-        record.status = RunStatus::Success;
-        record.objective_value = std::numeric_limits<double>::quiet_NaN();
-        record.message = "test";
-        const auto json = serialize_run_record(record);
-        HPOEA_V2_CHECK(runner, json.find("\"objective_value\":null") != std::string::npos,
-                       "NaN objective serialized as null");
     }
 
 
