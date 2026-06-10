@@ -2,6 +2,7 @@
 
 #include "hpoea/core/budget_checks.hpp"
 #include "hpoea/core/error_classification.hpp"
+#include "hpoea/core/seeding.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -25,8 +26,8 @@ hpoea::core::ParameterSpace make_parameter_space() {
     hpoea::core::ParameterDescriptor d;
     d.name = SAMPLE_COUNT;
     d.type = hpoea::core::ParameterType::Integer;
-    d.integer_range = hpoea::core::IntegerRange{1, 100000};
-    d.default_value = std::int64_t{100};
+    d.integer_range = hpoea::core::IntegerRange{0, 100000};
+    d.default_value = std::int64_t{0};
     space.add_descriptor(d);
 
     return space;
@@ -45,26 +46,6 @@ std::size_t get_sample_count(const hpoea::core::ParameterSet &parameters) {
         throw std::invalid_argument("parameter 'sample_count' cannot be negative");
     }
     return static_cast<std::size_t>(value);
-}
-
-std::uint64_t splitmix64(std::uint64_t x) {
-    constexpr std::uint64_t first_multiplier = 0xbf58476d1ce4e5b9ULL;
-    constexpr std::uint64_t second_multiplier = 0x94d049bb133111ebULL;
-
-    x ^= x >> 30;
-    x *= first_multiplier;
-    x ^= x >> 27;
-    x *= second_multiplier;
-    x ^= x >> 31;
-    return x;
-}
-
-unsigned long derive_trial_seed(unsigned long seed, std::size_t trial_index) {
-    constexpr std::uint64_t salt_multiplier = 0x9e3779b97f4a7c15ULL;
-
-    const auto salt = static_cast<std::uint64_t>(trial_index + 1u);
-    const auto mixed = splitmix64(static_cast<std::uint64_t>(seed) ^ (salt * salt_multiplier));
-    return static_cast<unsigned long>(mixed);
 }
 
 const hpoea::core::ParameterConfig *find_config(const hpoea::core::SearchSpace *search_space, const std::string &name) {
@@ -281,22 +262,7 @@ void fill_success_result(hpoea::core::HyperparameterOptimizationResult &result) 
 namespace hpoea::core {
 
 RandomSearchOptimizer::RandomSearchOptimizer()
-    : parameter_space_(make_parameter_space()), configured_parameters_(parameter_space_.apply_defaults({})),
-      identity_{"RandomSearch", "uniform_random", "1.0"} {}
-
-RandomSearchOptimizer::RandomSearchOptimizer(const RandomSearchOptimizer &other)
-    : parameter_space_(other.parameter_space_), configured_parameters_(other.configured_parameters_),
-      identity_(other.identity_),
-      search_space_(other.search_space_ ? std::make_shared<SearchSpace>(*other.search_space_) : nullptr) {}
-
-void RandomSearchOptimizer::configure(const ParameterSet &parameters) {
-    configured_parameters_ = parameter_space_.apply_defaults(parameters);
-    parameter_space_.validate(configured_parameters_);
-}
-
-void RandomSearchOptimizer::set_search_space(std::shared_ptr<SearchSpace> search_space) {
-    search_space_ = std::move(search_space);
-}
+    : HyperOptimizerBase(make_parameter_space(), {"RandomSearch", "uniform_random", "1.0"}) {}
 
 HyperparameterOptimizationResult RandomSearchOptimizer::optimize(const IEvolutionaryAlgorithmFactory &algorithm_factory,
                                                                  const IProblem &problem,
@@ -324,13 +290,22 @@ HyperparameterOptimizationResult RandomSearchOptimizer::optimize(const IEvolutio
                 "all parameters are fixed or excluded; use BaselineOptimizer for fixed/default runs");
         }
 
-        const auto configured_samples = get_sample_count(configured_parameters_);
-        auto planned_samples = configured_samples;
-        if (optimizer_budget.function_evaluations.has_value()) {
-            planned_samples = std::min(planned_samples, *optimizer_budget.function_evaluations);
-        }
         if (optimizer_budget.generations.has_value()) {
-            planned_samples = std::min(planned_samples, *optimizer_budget.generations);
+            throw std::invalid_argument(
+                "random search does not consume a generations budget; use optimizer_budget.function_evaluations");
+        }
+
+        const auto configured_samples = get_sample_count(configured_parameters_);
+        std::size_t planned_samples = configured_samples;
+        if (configured_samples == 0u) {
+            if (!optimizer_budget.function_evaluations.has_value()) {
+                throw std::invalid_argument(
+                    "random search sample_count is 0 and no optimizer_budget.function_evaluations is set; "
+                    "set sample_count or provide a function_evaluations budget");
+            }
+            planned_samples = *optimizer_budget.function_evaluations;
+        } else if (optimizer_budget.function_evaluations.has_value()) {
+            planned_samples = std::min(planned_samples, *optimizer_budget.function_evaluations);
         }
 
         if (planned_samples == 0u) {
@@ -357,7 +332,8 @@ HyperparameterOptimizationResult RandomSearchOptimizer::optimize(const IEvolutio
             }
 
             const auto trial_start = std::chrono::steady_clock::now();
-            const auto trial_seed = derive_trial_seed(seed, trial_index);
+            const auto trial_seed =
+                static_cast<unsigned long>(derive_stream_seed(static_cast<std::uint64_t>(seed), trial_index));
             HyperparameterTrialRecord trial;
             trial.trial_index = trial_index;
 

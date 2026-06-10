@@ -237,20 +237,28 @@ int main() {
                        "random search exposes sample_count");
 
         FakeFactory factory;
-        auto result = optimizer.optimize(factory, problem, {}, {}, 123UL);
+        hpoea::core::Budget fevals_budget;
+        fevals_budget.function_evaluations = 100u;
+        auto result = optimizer.optimize(factory, problem, fevals_budget, {}, 123UL);
         HPOEA_V2_CHECK(runner, result.status == hpoea::core::RunStatus::Success,
-                       "default random search succeeds");
-        HPOEA_V2_CHECK(runner, result.trials.size() == 100u, "default sample_count runs 100 trials");
+                       "budget-driven random search succeeds");
+        HPOEA_V2_CHECK(runner, result.trials.size() == 100u,
+                       "default sample_count draws planned samples from the fevals budget");
         HPOEA_V2_CHECK(runner, result.optimizer_usage.objective_calls == 100u,
-                       "default objective_calls matches trials");
+                       "budget-driven objective_calls matches trials");
 
-        bool zero_rejected = false;
+        auto unbudgeted = optimizer.optimize(factory, problem, {}, {}, 123UL);
+        HPOEA_V2_CHECK(runner, unbudgeted.status == hpoea::core::RunStatus::InvalidConfiguration,
+                       "default sample_count with no fevals budget is InvalidConfiguration");
+        HPOEA_V2_CHECK(runner, unbudgeted.trials.empty(), "budget-less default records no trials");
+
+        bool negative_rejected = false;
         try {
-            configure_samples(optimizer, 0);
+            configure_samples(optimizer, -1);
         } catch (const hpoea::core::ParameterValidationError &) {
-            zero_rejected = true;
+            negative_rejected = true;
         }
-        HPOEA_V2_CHECK(runner, zero_rejected, "sample_count=0 is rejected");
+        HPOEA_V2_CHECK(runner, negative_rejected, "negative sample_count is rejected");
     }
 
 
@@ -313,19 +321,22 @@ int main() {
 
         hpoea::core::Budget budget;
         budget.function_evaluations = 4u;
-        budget.generations = 2u;
         auto capped = optimizer.optimize(factory, problem, budget, {}, 7UL);
         HPOEA_V2_CHECK(runner, capped.status == hpoea::core::RunStatus::Success,
                        "capped random search can complete successfully");
-        HPOEA_V2_CHECK(runner, capped.trials.size() == 2u, "tightest optimizer budget caps samples");
-        HPOEA_V2_CHECK(runner, capped.optimizer_usage.objective_calls == 2u,
+        HPOEA_V2_CHECK(runner, capped.trials.size() == 4u,
+                       "function_evaluations budget caps explicit sample_count");
+        HPOEA_V2_CHECK(runner, capped.optimizer_usage.objective_calls == 4u,
                        "capped objective_calls matches samples");
 
-        budget.generations = 0u;
-        auto zero = optimizer.optimize(factory, problem, budget, {}, 7UL);
-        HPOEA_V2_CHECK(runner, zero.status == hpoea::core::RunStatus::BudgetExceeded,
-                       "zero optimizer budget returns BudgetExceeded");
-        HPOEA_V2_CHECK(runner, zero.trials.empty(), "zero optimizer budget records no trials");
+        hpoea::core::Budget generations_budget;
+        generations_budget.generations = 2u;
+        auto rejected = optimizer.optimize(factory, problem, generations_budget, {}, 7UL);
+        HPOEA_V2_CHECK(runner, rejected.status == hpoea::core::RunStatus::InvalidConfiguration,
+                       "generations optimizer budget is rejected as InvalidConfiguration");
+        HPOEA_V2_CHECK(runner, rejected.trials.empty(), "rejected generations budget records no trials");
+        HPOEA_V2_CHECK(runner, rejected.message.find("function_evaluations") != std::string::npos,
+                       "generations rejection directs to function_evaluations");
 
         hpoea::core::Budget wall_time;
         wall_time.wall_time = std::chrono::milliseconds{0};
