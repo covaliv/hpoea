@@ -4,7 +4,10 @@
 #include "hpoea/core/search_space.hpp"
 
 #include <cmath>
+#include <cstdint>
+#include <functional>
 #include <string>
+#include <vector>
 
 using hpoea::core::ParameterDescriptor;
 using hpoea::core::ParameterSpace;
@@ -61,51 +64,127 @@ int main() {
                    "discrete choices stored");
 
     {
-        ParameterSpace params = make_space();
-        hpoea::core::SearchSpace clamp_space;
-        clamp_space.optimize("lr", hpoea::core::ContinuousRange{-1.0, 2.0});
-        clamp_space.validate_and_clamp(params);
-        const auto *cfg = clamp_space.get("lr");
-        HPOEA_V2_CHECK(runner, cfg && cfg->continuous_bounds.has_value(),
-                       "validate_and_clamp keeps config");
-        HPOEA_V2_CHECK(runner, cfg->continuous_bounds->lower == 0.0 &&
-                                  cfg->continuous_bounds->upper == 1.0,
-                       "validate_and_clamp clamps to descriptor bounds");
-    }
-
-    {
-        ParameterSpace params = make_space();
-        hpoea::core::SearchSpace invalid;
-        invalid.fix("missing", 1.0);
-        bool threw = false;
-        try {
-            invalid.validate(params);
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
+        // every validation/construction rule that must fail loud or succeed
+        // one row per rule
+        // the fn carries the full setup so shapes can differ
+        const auto params = make_space();
+        struct Case {
+            const char *label;
+            bool expect_throw;
+            std::function<void()> fn;
+        };
+        const std::vector<Case> cases = {
+            {"validate rejects optimize continuous bounds outside descriptor range", true, [&] {
+                hpoea::core::SearchSpace s;
+                s.optimize("lr", hpoea::core::ContinuousRange{-1.0, 2.0});
+                s.validate(params);
+            }},
+            {"validate rejects optimize integer bounds outside descriptor range", true, [&] {
+                hpoea::core::SearchSpace s;
+                s.optimize("pop", hpoea::core::IntegerRange{0, 50});
+                s.validate(params);
+            }},
+            {"validate accepts optimize bounds contained in descriptor range", false, [&] {
+                hpoea::core::SearchSpace s;
+                s.optimize("lr", hpoea::core::ContinuousRange{0.1, 0.9});
+                s.optimize("pop", hpoea::core::IntegerRange{2, 8});
+                s.validate(params);
+            }},
+            {"validate rejects unknown parameter", true, [&] {
+                hpoea::core::SearchSpace s;
+                s.fix("missing", 1.0);
+                s.validate(params);
+            }},
+            {"log transform requires positive bounds", true, [&] {
+                hpoea::core::SearchSpace s;
+                s.optimize("lr", hpoea::core::ContinuousRange{0.0, 1.0}, hpoea::core::Transform::log);
+            }},
+            {"optimize_choices rejects empty list", true, [&] {
+                hpoea::core::SearchSpace s;
+                s.optimize_choices("mode", {});
+            }},
+            {"sqrt transform rejects negative lower bound", true, [&] {
+                hpoea::core::SearchSpace s;
+                s.optimize("p", hpoea::core::ContinuousRange{-1.0, 1.0}, hpoea::core::Transform::sqrt);
+            }},
+            {"sqrt transform accepts zero lower bound", false, [&] {
+                hpoea::core::SearchSpace s;
+                s.optimize("p", hpoea::core::ContinuousRange{0.0, 1.0}, hpoea::core::Transform::sqrt);
+            }},
+            {"optimize rejects continuous lower > upper", true, [&] {
+                hpoea::core::SearchSpace s;
+                s.optimize("p", hpoea::core::ContinuousRange{10.0, 1.0});
+            }},
+            {"optimize rejects integer lower > upper", true, [&] {
+                hpoea::core::SearchSpace s;
+                s.optimize("p", hpoea::core::IntegerRange{10, 1});
+            }},
+            {"validate rejects fixed value outside parameter range", true, [&] {
+                ParameterSpace p;
+                ParameterDescriptor desc;
+                desc.name = "x";
+                desc.type = ParameterType::Continuous;
+                desc.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
+                p.add_descriptor(desc);
+                hpoea::core::SearchSpace s;
+                s.fix("x", 5.0);
+                s.validate(p);
+            }},
+            {"set: rejects integer bounds lower > upper", true, [&] {
+                hpoea::core::SearchSpace s;
+                hpoea::core::ParameterConfig config;
+                config.mode = SearchMode::optimize;
+                config.integer_bounds = hpoea::core::IntegerRange{10, 1};
+                s.set("pop", config);
+            }},
+            {"set: rejects log transform with non-positive lower bound", true, [&] {
+                hpoea::core::SearchSpace s;
+                hpoea::core::ParameterConfig config;
+                config.mode = SearchMode::optimize;
+                config.continuous_bounds = hpoea::core::ContinuousRange{0.0, 1.0};
+                config.transform = hpoea::core::Transform::log;
+                s.set("lr", config);
+            }},
+            {"validate: integer discrete_choices rejects wrong variant type", true, [&] {
+                hpoea::core::SearchSpace s;
+                s.optimize_choices("pop", {std::string{"wrong_type"}});
+                s.validate(params);
+            }},
+            {"validate: integer discrete_choices rejects out-of-range value", true, [&] {
+                hpoea::core::SearchSpace s;
+                s.optimize_choices("pop", {std::int64_t{99}});
+                s.validate(params);
+            }},
+            {"validate: categorical discrete_choices rejects wrong variant type", true, [&] {
+                hpoea::core::SearchSpace s;
+                s.optimize_choices("mode", {std::int64_t{1}});
+                s.validate(params);
+            }},
+            {"validate: categorical discrete_choices rejects invalid value", true, [&] {
+                hpoea::core::SearchSpace s;
+                s.optimize_choices("mode", {std::string{"c"}});
+                s.validate(params);
+            }},
+            {"validate: continuous bounds on integer param throws", true, [&] {
+                hpoea::core::SearchSpace s;
+                s.optimize("pop", hpoea::core::ContinuousRange{0.0, 1.0});
+                s.validate(params);
+            }},
+            {"validate: integer bounds on continuous param throws", true, [&] {
+                hpoea::core::SearchSpace s;
+                s.optimize("lr", hpoea::core::IntegerRange{0, 10});
+                s.validate(params);
+            }},
+        };
+        for (const auto &c : cases) {
+            bool threw = false;
+            try {
+                c.fn();
+            } catch (const hpoea::core::ParameterValidationError &) {
+                threw = true;
+            }
+            HPOEA_V2_CHECK(runner, threw == c.expect_throw, c.label);
         }
-        HPOEA_V2_CHECK(runner, threw, "validate rejects unknown parameter");
-    }
-
-    {
-        bool threw = false;
-        try {
-            hpoea::core::SearchSpace invalid;
-            invalid.optimize("lr", hpoea::core::ContinuousRange{0.0, 1.0}, hpoea::core::Transform::log);
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "log transform requires positive bounds");
-    }
-
-    {
-        bool threw = false;
-        try {
-            hpoea::core::SearchSpace invalid;
-            invalid.optimize_choices("mode", {});
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "optimize_choices rejects empty list");
     }
 
     {
@@ -117,70 +196,6 @@ int main() {
         HPOEA_V2_CHECK(runner, bounds.size() == params.descriptors().size(),
                        "effective bounds cover all descriptors");
         HPOEA_V2_CHECK(runner, dim == 3u, "optimization dimension excludes fixed parameter");
-    }
-
-    {
-        bool threw = false;
-        try {
-            hpoea::core::SearchSpace invalid;
-            invalid.optimize("p", hpoea::core::ContinuousRange{-1.0, 1.0}, hpoea::core::Transform::sqrt);
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "sqrt transform rejects negative lower bound");
-    }
-
-    {
-        bool threw = false;
-        try {
-            hpoea::core::SearchSpace valid;
-            valid.optimize("p", hpoea::core::ContinuousRange{0.0, 1.0}, hpoea::core::Transform::sqrt);
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, !threw, "sqrt transform accepts zero lower bound");
-    }
-
-    {
-        bool threw = false;
-        try {
-            hpoea::core::SearchSpace invalid;
-            invalid.optimize("p", hpoea::core::ContinuousRange{10.0, 1.0});
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "optimize rejects continuous lower > upper");
-    }
-
-    {
-        bool threw = false;
-        try {
-            hpoea::core::SearchSpace invalid;
-            invalid.optimize("p", hpoea::core::IntegerRange{10, 1});
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "optimize rejects integer lower > upper");
-    }
-
-    {
-        ParameterSpace params;
-        ParameterDescriptor desc;
-        desc.name = "x";
-        desc.type = ParameterType::Continuous;
-        desc.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
-        params.add_descriptor(desc);
-
-        hpoea::core::SearchSpace search;
-        search.fix("x", 5.0);
-
-        bool threw = false;
-        try {
-            search.validate(params);
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "validate rejects fixed value outside parameter range");
     }
 
     {
@@ -196,117 +211,10 @@ int main() {
 
     {
         hpoea::core::SearchSpace space;
-        hpoea::core::ParameterConfig config;
-        config.mode = SearchMode::optimize;
-        config.integer_bounds = hpoea::core::IntegerRange{10, 1};
-        bool threw = false;
-        try {
-            space.set("pop", config);
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "set: rejects integer bounds lower > upper");
-    }
-
-    {
-        hpoea::core::SearchSpace space;
-        hpoea::core::ParameterConfig config;
-        config.mode = SearchMode::optimize;
-        config.continuous_bounds = hpoea::core::ContinuousRange{0.0, 1.0};
-        config.transform = hpoea::core::Transform::log;
-        bool threw = false;
-        try {
-            space.set("lr", config);
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "set: rejects log transform with non-positive lower bound");
-    }
-
-    {
-        hpoea::core::SearchSpace space;
         space.fix("lr", 0.5);
         HPOEA_V2_CHECK(runner, space.get("lr")->mode == SearchMode::fixed, "set overwrite: initially fixed");
         space.optimize("lr", hpoea::core::ContinuousRange{0.1, 0.9});
         HPOEA_V2_CHECK(runner, space.get("lr")->mode == SearchMode::optimize, "set overwrite: now optimize");
-    }
-
-    {
-        ParameterSpace params = make_space();
-        hpoea::core::SearchSpace space;
-        space.optimize_choices("pop", {std::string{"wrong_type"}});
-        bool threw = false;
-        try {
-            space.validate(params);
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "validate: integer discrete_choices rejects wrong variant type");
-    }
-
-    {
-        ParameterSpace params = make_space();
-        hpoea::core::SearchSpace space;
-        space.optimize_choices("pop", {std::int64_t{99}});
-        bool threw = false;
-        try {
-            space.validate(params);
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "validate: integer discrete_choices rejects out-of-range value");
-    }
-
-    {
-        ParameterSpace params = make_space();
-        hpoea::core::SearchSpace space;
-        space.optimize_choices("mode", {std::int64_t{1}});
-        bool threw = false;
-        try {
-            space.validate(params);
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "validate: categorical discrete_choices rejects wrong variant type");
-    }
-
-    {
-        ParameterSpace params = make_space();
-        hpoea::core::SearchSpace space;
-        space.optimize_choices("mode", {std::string{"c"}});
-        bool threw = false;
-        try {
-            space.validate(params);
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "validate: categorical discrete_choices rejects invalid value");
-    }
-
-    {
-        ParameterSpace params = make_space();
-        hpoea::core::SearchSpace space;
-        space.optimize("pop", hpoea::core::ContinuousRange{0.0, 1.0});
-        bool threw = false;
-        try {
-            space.validate(params);
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "validate: continuous bounds on integer param throws");
-    }
-
-    {
-        ParameterSpace params = make_space();
-        hpoea::core::SearchSpace space;
-        space.optimize("lr", hpoea::core::IntegerRange{0, 10});
-        bool threw = false;
-        try {
-            space.validate(params);
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "validate: integer bounds on continuous param throws");
     }
 
     {
@@ -356,19 +264,6 @@ int main() {
         const auto dim = space.get_optimization_dimension(params);
 
         HPOEA_V2_CHECK(runner, dim == 2u, "optimization dimension: fixed + excluded reduce count");
-    }
-
-    {
-        hpoea::core::SearchSpace space;
-        bool threw = false;
-        try {
-            hpoea::core::ParameterConfig config;
-            config.integer_bounds = hpoea::core::IntegerRange{10, 5};
-            space.set("bad_int", std::move(config));
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "set() rejects integer bounds with lower > upper");
     }
 
     {

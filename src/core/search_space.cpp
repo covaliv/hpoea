@@ -155,36 +155,34 @@ void SearchSpace::validate(const ParameterSpace &space) const {
                                      "non-integer parameter: " +
                                      name);
     }
-  }
-}
 
-void SearchSpace::validate_and_clamp(const ParameterSpace &space) {
-  validate(space);
-
-  for (auto &[name, config] : configs_) {
-    if (config.mode != SearchMode::optimize) {
-      continue;
-    }
-
-    const auto &descriptor = space.descriptor(name);
-
-    if (config.continuous_bounds.has_value() &&
+    if (config.mode == SearchMode::optimize &&
+        config.continuous_bounds.has_value() &&
         descriptor.continuous_range.has_value()) {
-      config.continuous_bounds =
-          clamp_bounds(config.continuous_bounds.value(),
-                       descriptor.continuous_range.value());
-      validate_transform_bounds(config.continuous_bounds.value(),
-                                config.transform);
+      const auto &bounds = config.continuous_bounds.value();
+      const auto &range = descriptor.continuous_range.value();
+      if (bounds.lower < range.lower || bounds.upper > range.upper) {
+        throw ParameterValidationError(
+            "optimize bounds for '" + name + "' [" +
+            std::to_string(bounds.lower) + ", " + std::to_string(bounds.upper) +
+            "] are not contained in parameter range [" +
+            std::to_string(range.lower) + ", " + std::to_string(range.upper) +
+            "]");
+      }
     }
 
-    if (config.integer_bounds.has_value() &&
+    if (config.mode == SearchMode::optimize &&
+        config.integer_bounds.has_value() &&
         descriptor.integer_range.has_value()) {
-      config.integer_bounds = clamp_bounds(config.integer_bounds.value(),
-                                           descriptor.integer_range.value());
-      if (config.integer_bounds->lower > config.integer_bounds->upper) {
+      const auto &bounds = config.integer_bounds.value();
+      const auto &range = descriptor.integer_range.value();
+      if (bounds.lower < range.lower || bounds.upper > range.upper) {
         throw ParameterValidationError(
-            "integer bounds for '" + name +
-            "' do not overlap with parameter range");
+            "optimize bounds for '" + name + "' [" +
+            std::to_string(bounds.lower) + ", " + std::to_string(bounds.upper) +
+            "] are not contained in parameter range [" +
+            std::to_string(range.lower) + ", " + std::to_string(range.upper) +
+            "]");
       }
     }
   }

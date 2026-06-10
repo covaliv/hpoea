@@ -59,7 +59,6 @@ public:
   [[nodiscard]] bool empty() const noexcept;
 
   void validate(const ParameterSpace &space) const;
-  void validate_and_clamp(const ParameterSpace &space);
 
   [[nodiscard]] std::vector<EffectiveBounds>
   get_effective_bounds(const ParameterSpace &space) const;
