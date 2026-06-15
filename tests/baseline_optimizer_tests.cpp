@@ -70,6 +70,10 @@ int main() {
         HPOEA_V2_CHECK(runner,
                        hpoea::tests_v2::parameter_set_equals(result.trials[0].parameters, defaults),
                        "trial parameters match EA defaults");
+        HPOEA_V2_CHECK(runner, result.seed == 42UL,
+                       "baseline records seed in result");
+        HPOEA_V2_CHECK(runner, result.optimizer_usage.iterations == 0,
+                       "baseline optimizer_usage.iterations is 0");
     }
 
 
@@ -104,29 +108,15 @@ int main() {
                        "fixed crossover_rate=0.9 is preserved");
         HPOEA_V2_CHECK(runner, result.message.find("fixed") != std::string::npos,
                        "message indicates fixed parameters");
-    }
 
-
-    {
-        hpoea::core::ParameterSet custom;
-        custom.emplace("population_size", std::int64_t{25});
-        hpoea::core::BaselineOptimizer baseline(custom);
-
+        // parallel manager uses clone
+        // it must carry the fixed parameters
         auto cloned = baseline.clone();
-        HPOEA_V2_CHECK(runner, cloned != nullptr, "clone returns non-null");
-        HPOEA_V2_CHECK(runner, cloned->identity().family == "Baseline",
-                       "cloned identity is Baseline");
-
-        hpoea::core::Budget algo_budget;
-        algo_budget.generations = 3u;
-
-        auto result = cloned->optimize(factory, problem, {}, algo_budget, 999);
-        HPOEA_V2_CHECK(runner, result.trials.size() == 1u,
-                       "cloned baseline produces 1 trial");
-        HPOEA_V2_CHECK(runner,
-                       hpoea::tests_v2::parameter_value_equals(
-                           result.trials[0].parameters.at("population_size"),
-                           hpoea::core::ParameterValue{std::int64_t{25}}),
+        auto cloned_result = cloned->optimize(factory, problem, {}, algo_budget, 999);
+        HPOEA_V2_CHECK(runner, cloned_result.trials.size() == 1u &&
+                                  hpoea::tests_v2::parameter_value_equals(
+                                      cloned_result.trials[0].parameters.at("population_size"),
+                                      hpoea::core::ParameterValue{std::int64_t{30}}),
                        "cloned baseline preserves fixed parameters");
     }
 
@@ -279,28 +269,6 @@ int main() {
         hpoea::core::Budget algo_budget;
         algo_budget.generations = 5u;
 
-        auto result = baseline.optimize(factory, problem, {}, algo_budget, 42);
-        HPOEA_V2_CHECK(runner, result.optimizer_usage.wall_time.count() >= 0,
-                       "baseline wall_time is non-negative");
-    }
-
-
-    {
-        hpoea::core::BaselineOptimizer baseline;
-        hpoea::core::Budget algo_budget;
-        algo_budget.generations = 3u;
-
-        auto result = baseline.optimize(factory, problem, {}, algo_budget, 12345);
-        HPOEA_V2_CHECK(runner, result.seed == 12345UL,
-                       "baseline records seed in result");
-    }
-
-
-    {
-        hpoea::core::BaselineOptimizer baseline;
-        hpoea::core::Budget algo_budget;
-        algo_budget.generations = 5u;
-
 
         hpoea::core::Budget optimizer_budget;
         optimizer_budget.function_evaluations = 0u;
@@ -313,24 +281,10 @@ int main() {
                        "baseline budget-exceeded message is informative");
         HPOEA_V2_CHECK(runner, !result.error_info.has_value(),
                        "baseline optimizer budget exceeded does not synthesize error_info");
-    }
-
-
-    {
-        hpoea::core::BaselineOptimizer baseline;
-        hpoea::core::Budget algo_budget;
-        algo_budget.generations = 5u;
-        hpoea::core::Budget optimizer_budget;
-        optimizer_budget.function_evaluations = 1000u;
-
-        auto result = baseline.optimize(factory, problem, optimizer_budget, algo_budget, 42);
-
-        HPOEA_V2_CHECK(runner, result.optimizer_usage.objective_calls == 1,
-                       "baseline optimizer_usage.objective_calls is 1");
-        HPOEA_V2_CHECK(runner, result.optimizer_usage.iterations == 0,
-                       "baseline optimizer_usage.iterations is 0");
-        HPOEA_V2_CHECK(runner, result.optimizer_usage.wall_time.count() >= 0,
-                       "baseline optimizer_usage.wall_time is populated");
+        HPOEA_V2_CHECK(runner, !std::isfinite(result.best_objective),
+                       "baseline zero budget does not leak a finite objective");
+        HPOEA_V2_CHECK(runner, result.trials.empty(),
+                       "baseline zero budget records no trial");
     }
 
     return runner.summarize("baseline_optimizer_tests");

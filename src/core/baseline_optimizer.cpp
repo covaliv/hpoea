@@ -19,6 +19,15 @@ HyperparameterOptimizationResult BaselineOptimizer::optimize(
 
     const auto start_time = std::chrono::steady_clock::now();
 
+    if (optimizer_budget.function_evaluations.has_value() && *optimizer_budget.function_evaluations == 0) {
+        const auto end_time = std::chrono::steady_clock::now();
+        result.status = RunStatus::BudgetExceeded;
+        result.message = "optimizer budget allows zero baseline runs";
+        result.optimizer_usage.wall_time =
+            std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        return result;
+    }
+
     try {
         auto algorithm = algorithm_factory.create();
 

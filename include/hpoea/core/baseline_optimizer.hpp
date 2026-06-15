@@ -7,24 +7,14 @@
 
 namespace hpoea::core {
 
-/// a no-op hyper optimizer that runs the ea once with default or fixed
-/// parameters. slots into the experiment framework just like real hoas,
-/// producing directly comparable runrecord/jsonl output so that
-/// default-vs-tuned comparisons need no special-case code.
-///
-/// usage:
-///   BaselineOptimizer baseline;                        // uses ea defaults
-///   BaselineOptimizer baseline(custom_params);         // uses fixed params
-///   manager.run_experiment(config, baseline, factory, problem, logger);
-///
-/// each call to optimize() runs the ea once and returns a single trial.
-/// set ExperimentConfig::trials_per_optimizer to n for n independent runs.
+// no-op hyper optimizer
+// runs the ea once per optimize() call with default or fixed parameters
+// keeps default-vs-tuned comparisons on the same runrecord pipeline
 class BaselineOptimizer final : public IHyperparameterOptimizer {
 public:
     BaselineOptimizer()
         : identity_{"Baseline", "default_parameters", "1.0"} {}
 
-    /// run the ea with these specific parameters instead of defaults.
     explicit BaselineOptimizer(ParameterSet fixed_parameters)
         : identity_{"Baseline", "fixed_parameters", "1.0"},
           fixed_parameters_(std::move(fixed_parameters)) {}
@@ -42,7 +32,12 @@ public:
     }
 
     void configure(const ParameterSet & /*parameters*/) override {
-        // nothing to configure, baseline has no tunable parameters
+        // nothing to configure
+        // baseline has no tunable parameters
+    }
+
+    [[nodiscard]] const ParameterSet &configured_parameters() const noexcept override {
+        return fixed_parameters_ ? *fixed_parameters_ : IHyperparameterOptimizer::configured_parameters();
     }
 
     [[nodiscard]] HyperparameterOptimizationResult optimize(
