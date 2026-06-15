@@ -1,16 +1,20 @@
 #pragma once
 
+#include "hpoea/core/budget_checks.hpp"
 #include "hpoea/core/error_classification.hpp"
 #include "hpoea/core/evolution_algorithm.hpp"
 #include "hpoea/core/parameters.hpp"
+#include "hpoea/core/seeding.hpp"
 #include "hpoea/core/types.hpp"
 #include "problem_adapter.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <pagmo/algorithm.hpp>
 #include <pagmo/population.hpp>
@@ -43,23 +47,12 @@ inline auto get_param(const core::ParameterSet &params, const char *name) {
     }
 }
 
-// splitmix64 finalizer (Vigna 2017, doi:10.1016/j.cam.2016.11.006)
-inline unsigned long splitmix64(unsigned long x) {
-    x ^= x >> 30;
-    x *= 0xbf58476d1ce4e5b9UL;
-    x ^= x >> 27;
-    x *= 0x94d049bb133111ebUL;
-    x ^= x >> 31;
-    return x;
-}
-
 inline unsigned to_seed32(unsigned long seed) {
-    return static_cast<unsigned>(splitmix64(seed));
+    return static_cast<unsigned>(core::splitmix64(seed));
 }
 
-// derive a different seed by mixing with a salt value.
-inline unsigned derive_seed(unsigned long seed, unsigned long salt) {
-    return static_cast<unsigned>(splitmix64(seed ^ (salt * 0x9e3779b97f4a7c15UL)));
+inline unsigned derive_seed32(unsigned long seed, unsigned long index) {
+    return static_cast<unsigned>(core::derive_stream_seed(seed, index));
 }
 
 inline std::size_t read_fevals(const pagmo::population &population,
@@ -67,10 +60,28 @@ inline std::size_t read_fevals(const pagmo::population &population,
     try {
         return static_cast<std::size_t>(population.get_problem().get_fevals());
     } catch (const std::exception &) {
-        // pagmo may not track fevals for all problem types;
-        // fall back to the population-based estimate
+        // pagmo may not track fevals for all problem types
+        // fall back to population estimate
         return fallback;
     }
+}
+
+inline std::size_t clamp_hyper_generations(
+    std::size_t configured_generations,
+    const core::Budget &budget,
+    std::size_t population_size) {
+    const auto ps = std::max(population_size, std::size_t{1});
+    auto generations = configured_generations;
+    if (budget.generations) {
+        generations = std::min(generations, *budget.generations);
+    }
+    if (budget.function_evaluations) {
+        // reserve population_size fevals for initial population
+        auto available = *budget.function_evaluations > ps
+            ? *budget.function_evaluations - ps : std::size_t{0};
+        generations = std::min(generations, available / ps);
+    }
+    return generations;
 }
 
 inline std::size_t compute_generations(const core::ParameterSet &params,
@@ -85,36 +96,7 @@ inline std::size_t compute_generations(const core::ParameterSet &params,
         throw std::invalid_argument("generations must be positive");
     }
 
-    if (budget.generations)
-        gens = std::min(gens, *budget.generations);
-
-    if (budget.function_evaluations) {
-        // reserve population_size fevals for initial population
-        auto available = *budget.function_evaluations > population_size
-                             ? *budget.function_evaluations - population_size
-                             : 0;
-        auto max_gens = available / population_size;
-        gens = std::min(gens, max_gens);
-    }
-
-    return gens;
-}
-
-inline std::size_t clamp_hyper_generations(
-    std::size_t configured_generations,
-    const core::Budget &budget,
-    std::size_t population_size) {
-    const auto ps = std::max(population_size, std::size_t{1});
-    auto generations = configured_generations;
-    if (budget.generations) {
-        generations = std::min(generations, *budget.generations);
-    }
-    if (budget.function_evaluations) {
-        auto available = *budget.function_evaluations > ps
-            ? *budget.function_evaluations - ps : std::size_t{0};
-        generations = std::min(generations, available / ps);
-    }
-    return generations;
+    return clamp_hyper_generations(gens, budget, population_size);
 }
 
 struct BudgetFields {
@@ -147,32 +129,13 @@ inline BudgetFields compute_budget_fields(const core::Budget &budget,
     return fields;
 }
 
-// check whether an inner ea run exceeded its budget.
 inline void apply_budget_status(const core::Budget &budget,
                                 const core::AlgorithmRunUsage &usage,
                                 core::RunStatus &status,
                                 std::string &message) {
-    if (status != core::RunStatus::Success &&
-        status != core::RunStatus::BudgetExceeded) {
-        return;
-    }
-
-    if (budget.wall_time.has_value() && usage.wall_time > *budget.wall_time) {
-        status = core::RunStatus::BudgetExceeded;
-        message = "wall-time budget exceeded";
-        return;
-    }
-    if (budget.function_evaluations.has_value() &&
-        usage.function_evaluations > *budget.function_evaluations) {
-        status = core::RunStatus::BudgetExceeded;
-        message = "function-evaluations budget exceeded";
-        return;
-    }
-    if (budget.generations.has_value() && usage.generations > *budget.generations) {
-        status = core::RunStatus::BudgetExceeded;
-        message = "generation budget exceeded";
-        return;
-    }
+    core::detail::apply_budget_status_counters(budget, usage.wall_time,
+                                               usage.function_evaluations, usage.generations,
+                                               status, message);
 }
 
 template <typename AlgorithmBuilder>
@@ -187,6 +150,10 @@ inline core::OptimizationResult run_population(
     result.seed = seed;
 
     const auto start_time = std::chrono::steady_clock::now();
+    // shared across pagmo's problem copies
+    // so the catch path can still recover the fevals
+    auto eval_counter = std::make_shared<std::atomic<std::size_t>>(0);
+    std::size_t population_size = 0;
 
     try {
         static_assert(std::is_invocable_r_v<pagmo::algorithm,
@@ -195,18 +162,18 @@ inline core::OptimizationResult run_population(
                                              unsigned>,
                       "AlgorithmBuilder must be callable as pagmo::algorithm(unsigned generations, unsigned seed32)");
 
-        const auto population_size = get_param<std::int64_t>(configured_parameters, "population_size");
+        population_size = get_param<std::int64_t>(configured_parameters, "population_size");
 
         auto effective_parameters = configured_parameters;
         const auto generations = compute_generations(configured_parameters, budget, population_size);
         effective_parameters.insert_or_assign("generations", static_cast<std::int64_t>(generations));
 
         const auto algo_seed = to_seed32(seed);
-        const auto pop_seed = derive_seed(seed, 1);
+        const auto pop_seed = derive_seed32(seed, 0);
         constexpr auto uint_max = static_cast<std::size_t>(std::numeric_limits<unsigned>::max());
         pagmo::algorithm algorithm = make_algorithm(
             static_cast<unsigned>(std::min(generations, uint_max)), algo_seed);
-        pagmo::problem pg_problem{ProblemAdapter{problem}};
+        pagmo::problem pg_problem{ProblemAdapter{problem, eval_counter}};
         pagmo::population population{pg_problem, population_size, pop_seed};
 
         if (generations > 0) {
@@ -224,8 +191,8 @@ inline core::OptimizationResult run_population(
         result.algorithm_usage.function_evaluations = read_fevals(
             population,
             population_size * (generations + 1));
-        // back-derive actual generations from actual fevals.
-        // all wrapped algorithms evaluate exactly population_size individuals per generation.
+        // back-derive generations from fevals
+        // every wrapped algorithm does exactly population_size evals per generation
         const auto actual_fevals = result.algorithm_usage.function_evaluations;
         const auto actual_generations = actual_fevals > population_size
             ? (actual_fevals - population_size) / population_size
@@ -250,6 +217,15 @@ inline core::OptimizationResult run_population(
         const auto end_time = std::chrono::steady_clock::now();
         result.algorithm_usage.wall_time =
             std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        // population is gone on throw
+        // recover fevals from the shared counter
+        // back-derive generations from that
+        const auto performed = eval_counter->load(std::memory_order_relaxed);
+        result.algorithm_usage.function_evaluations = performed;
+        result.algorithm_usage.generations =
+            (population_size > 0 && performed > population_size)
+                ? (performed - population_size) / population_size
+                : 0u;
         result.message = ex.what();
 
         const auto classified = core::classify_exception(ex);

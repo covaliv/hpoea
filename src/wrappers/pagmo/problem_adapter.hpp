@@ -3,7 +3,10 @@
 #include "hpoea/core/error_classification.hpp"
 #include "hpoea/core/problem.hpp"
 
+#include <atomic>
 #include <cmath>
+#include <cstddef>
+#include <memory>
 #include <pagmo/types.hpp>
 #include <stdexcept>
 #include <string>
@@ -17,11 +20,20 @@ public:
 
     explicit ProblemAdapter(const hpoea::core::IProblem &problem) : problem_(&problem) {}
 
+    // pagmo copies the problem
+    // shared counter lives in every copy so failed runs still count
+    ProblemAdapter(const hpoea::core::IProblem &problem,
+                   std::shared_ptr<std::atomic<std::size_t>> eval_counter)
+        : problem_(&problem), eval_counter_(std::move(eval_counter)) {}
+
     [[nodiscard]] pagmo::vector_double fitness(const pagmo::vector_double &decision_vector) const {
         try {
             const auto value = problem().evaluate(decision_vector);
             if (!std::isfinite(value)) {
                 throw core::EvaluationFailure("problem evaluation returned non-finite value");
+            }
+            if (eval_counter_) {
+                eval_counter_->fetch_add(1, std::memory_order_relaxed);
             }
             return {value};
         } catch (const core::EvaluationFailure &) {
@@ -70,6 +82,7 @@ private:
     }
 
     const hpoea::core::IProblem *problem_{nullptr};
+    std::shared_ptr<std::atomic<std::size_t>> eval_counter_;
 };
 
 } // namespace hpoea::pagmo_wrappers

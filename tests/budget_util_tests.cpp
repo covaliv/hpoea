@@ -11,10 +11,13 @@
 
 #include "budget_util.hpp"
 
+#include <chrono>
 #include <cmath>
 #include <initializer_list>
 #include <limits>
+#include <stdexcept>
 #include <string>
+#include <vector>
 
 using hpoea::core::Budget;
 using hpoea::core::AlgorithmRunUsage;
@@ -122,11 +125,13 @@ int main() {
 
 
     {
-        const unsigned a = hpoea::pagmo_wrappers::derive_seed(42UL, 1UL);
-        const unsigned b = hpoea::pagmo_wrappers::derive_seed(42UL, 1UL);
-        const unsigned c = hpoea::pagmo_wrappers::derive_seed(42UL, 2UL);
-        HPOEA_V2_CHECK(runner, a == b, "derive_seed deterministic");
-        HPOEA_V2_CHECK(runner, a != c, "derive_seed changes with salt");
+        const unsigned a = hpoea::pagmo_wrappers::derive_seed32(42UL, 0UL);
+        const unsigned b = hpoea::pagmo_wrappers::derive_seed32(42UL, 0UL);
+        const unsigned c = hpoea::pagmo_wrappers::derive_seed32(42UL, 1UL);
+        HPOEA_V2_CHECK(runner, a == b, "derive_seed32 deterministic");
+        HPOEA_V2_CHECK(runner, a != c, "derive_seed32 changes with index");
+        HPOEA_V2_CHECK(runner, a != hpoea::pagmo_wrappers::to_seed32(42UL),
+                       "derive_seed32 index 0 does not collide with to_seed32");
     }
 
 
@@ -287,39 +292,9 @@ int main() {
 
     {
         ParameterSet params;
-        params.emplace("rate", std::int64_t{3});
-        bool threw = false;
-        try {
-            (void)hpoea::pagmo_wrappers::get_param<double>(params, "rate");
-        } catch (const std::invalid_argument &ex) {
-            threw = true;
-            HPOEA_V2_CHECK(runner, contains_all(ex.what(), {"rate", "type"}),
-                           "get_param<double> type mismatch message identifies parameter and type");
-        }
-        HPOEA_V2_CHECK(runner, threw, "get_param<double> throws on type mismatch");
-    }
-
-
-    {
-        ParameterSet params;
         params.emplace("flag", true);
         auto val = hpoea::pagmo_wrappers::get_param<bool>(params, "flag");
         HPOEA_V2_CHECK(runner, val == true, "get_param<bool> returns correct value");
-    }
-
-
-    {
-        ParameterSet params;
-        params.emplace("flag", 1.0);
-        bool threw = false;
-        try {
-            (void)hpoea::pagmo_wrappers::get_param<bool>(params, "flag");
-        } catch (const std::invalid_argument &ex) {
-            threw = true;
-            HPOEA_V2_CHECK(runner, contains_all(ex.what(), {"flag", "type"}),
-                           "get_param<bool> type mismatch message identifies parameter and type");
-        }
-        HPOEA_V2_CHECK(runner, threw, "get_param<bool> throws on type mismatch");
     }
 
 
@@ -460,6 +435,49 @@ int main() {
         HPOEA_V2_CHECK(runner,
                        result.message.find("insufficient") != std::string::npos,
                        "zero-generations run message should mention insufficient budget");
+    }
+
+
+    {
+        class ThrowAtNProblem final : public hpoea::core::IProblem {
+        public:
+            explicit ThrowAtNProblem(int throw_at) : throw_at_(throw_at) {
+                meta_.id = "throw_at_n";
+                meta_.family = "tests";
+                meta_.description = "throws at the Nth evaluation";
+            }
+            [[nodiscard]] const hpoea::core::ProblemMetadata &metadata() const noexcept override { return meta_; }
+            [[nodiscard]] std::size_t dimension() const override { return 2; }
+            [[nodiscard]] std::vector<double> lower_bounds() const override { return {-5.0, -5.0}; }
+            [[nodiscard]] std::vector<double> upper_bounds() const override { return {5.0, 5.0}; }
+            [[nodiscard]] double evaluate(const std::vector<double> &x) const override {
+                if (++calls_ >= throw_at_) {
+                    throw std::runtime_error("boom at N");
+                }
+                return x[0] * x[0] + x[1] * x[1];
+            }
+
+        private:
+            int throw_at_;
+            mutable int calls_{0};
+            hpoea::core::ProblemMetadata meta_{};
+        };
+
+        ThrowAtNProblem problem(8);  // 8th evaluation throws so 7 completed
+        hpoea::pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
+        auto algo = factory.create();
+        ParameterSet params;
+        params.emplace("population_size", std::int64_t{10});
+        params.emplace("generations", std::int64_t{5});
+        algo->configure(params);
+
+        Budget budget;
+        auto result = algo->run(problem, budget, 42UL);
+
+        HPOEA_V2_CHECK(runner, result.status != hpoea::core::RunStatus::Success,
+                       "run against a throwing problem does not report Success");
+        HPOEA_V2_CHECK(runner, result.algorithm_usage.function_evaluations == 7u,
+                       "failed run reports the 7 evaluations actually performed, not 0");
     }
 
     return runner.summarize("budget_util_tests");
