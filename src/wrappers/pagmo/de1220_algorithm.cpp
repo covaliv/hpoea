@@ -19,7 +19,7 @@ using hpoea::core::ParameterType;
 ParameterSpace make_parameter_space() {
     ParameterSpace space;
 
-    space.add_descriptor(hpoea::pagmo_wrappers::make_population_size_descriptor(50, {5, 5000}));
+    space.add_descriptor(hpoea::pagmo_wrappers::make_population_size_descriptor(50, {7, 5000}));
     space.add_descriptor(hpoea::pagmo_wrappers::make_generations_descriptor(200));
     space.add_descriptor(hpoea::pagmo_wrappers::make_ftol_descriptor());
     space.add_descriptor(hpoea::pagmo_wrappers::make_xtol_descriptor());

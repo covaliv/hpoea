@@ -10,8 +10,6 @@
 namespace hpoea::pagmo_wrappers {
 
 // base for all pagmo EA wrappers.
-// provides identity(), parameter_space(), and configure(); subclasses
-// only need to implement run() and clone().
 class PagmoAlgorithmBase : public core::IEvolutionaryAlgorithm {
 public:
     [[nodiscard]] const core::AlgorithmIdentity &identity() const noexcept override { return identity_; }
@@ -27,7 +25,6 @@ protected:
 };
 
 // base for all pagmo EA factories.
-// provides identity() and parameter_space(); subclasses only implement create().
 class PagmoAlgorithmFactoryBase : public core::IEvolutionaryAlgorithmFactory {
 public:
     [[nodiscard]] const core::ParameterSpace &parameter_space() const noexcept override { return parameter_space_; }
@@ -40,7 +37,7 @@ protected:
     core::AlgorithmIdentity identity_;
 };
 
-// common parameter descriptor helpers used across multiple EA wrappers
+// parameter descriptor helpers shared by the EA wrappers
 
 inline core::ParameterDescriptor make_population_size_descriptor(
     std::int64_t default_val = 50,

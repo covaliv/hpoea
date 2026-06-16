@@ -42,7 +42,8 @@ ParameterSpace make_parameter_space() {
     d = {};
     d.name = "max_velocity";
     d.type = ParameterType::Continuous;
-    d.continuous_range = hpoea::core::ContinuousRange{0.0, 100.0};
+    // pagmo::pso requires max_vel in (0, 1]
+    d.continuous_range = hpoea::core::ContinuousRange{0.01, 1.0};
     d.default_value = 0.5;
     space.add_descriptor(d);
 

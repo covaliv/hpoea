@@ -58,7 +58,7 @@ core::OptimizationResult PagmoCmaes::run(const core::IProblem &problem,
         [=](unsigned generations, unsigned algo_seed) {
             return pagmo::algorithm{
                 pagmo::cmaes(generations, -1, -1, -1, -1, sigma0, ftol, xtol,
-                             true, false, algo_seed)};
+                             true, true, algo_seed)};
         });
 }
 

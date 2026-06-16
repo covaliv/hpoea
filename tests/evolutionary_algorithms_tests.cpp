@@ -10,8 +10,13 @@
 #include "hpoea/wrappers/problems/benchmark_problems.hpp"
 
 #include <cmath>
+#include <functional>
 #include <limits>
+#include <memory>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -40,6 +45,23 @@ bool vector_equal(const std::vector<double> &lhs, const std::vector<double> &rhs
     return true;
 }
 
+hpoea::core::ParameterSet endpoint_params(const hpoea::core::ParameterSpace &space, const char *endpoint) {
+    const bool use_max = std::string_view{endpoint} == "max";
+    hpoea::core::ParameterSet params;
+    for (const auto &desc : space.descriptors()) {
+        if (desc.type == hpoea::core::ParameterType::Continuous) {
+            const auto &range = *desc.continuous_range;
+            params.emplace(desc.name, use_max ? range.upper : range.lower);
+        } else if (desc.type == hpoea::core::ParameterType::Integer) {
+            const auto &range = *desc.integer_range;
+            params.emplace(desc.name, use_max ? range.upper : range.lower);
+        } else if (desc.type == hpoea::core::ParameterType::Boolean) {
+            params.emplace(desc.name, false);
+        }
+    }
+    return params;
+}
+
 }
 
 int main() {
@@ -51,6 +73,102 @@ int main() {
 
 
     {
+        // smoke every EA wrapper
+        // runs to Success and records its seed
+        // reproducible
+        // rejects pop=1
+        // maps evaluation exceptions to FailedEvaluation
+        // all six share run_population's catch
+        struct AlgoCase {
+            const char *name;
+            std::function<std::unique_ptr<hpoea::core::IEvolutionaryAlgorithmFactory>()> make;
+            std::function<void(hpoea::core::ParameterSet &)> extra;
+        };
+        const AlgoCase cases[] = {
+            {"DE", [] { return std::make_unique<hpoea::pagmo_wrappers::PagmoDifferentialEvolutionFactory>(); },
+             [](hpoea::core::ParameterSet &p) {
+                 p.emplace("scaling_factor", 0.7);
+                 p.emplace("crossover_rate", 0.9);
+                 p.emplace("variant", std::int64_t{2});
+             }},
+            {"PSO", [] { return std::make_unique<hpoea::pagmo_wrappers::PagmoParticleSwarmOptimizationFactory>(); },
+             [](hpoea::core::ParameterSet &p) {
+                 p.emplace("omega", 0.7);
+                 p.emplace("eta1", 2.0);
+                 p.emplace("eta2", 2.0);
+                 p.emplace("max_velocity", 0.5);
+                 p.emplace("variant", std::int64_t{5});
+             }},
+            {"SADE", [] { return std::make_unique<hpoea::pagmo_wrappers::PagmoSelfAdaptiveDEFactory>(); },
+             [](hpoea::core::ParameterSet &p) {
+                 p.emplace("variant", std::int64_t{2});
+                 p.emplace("variant_adptv", std::int64_t{1});
+             }},
+            {"SGA", [] { return std::make_unique<hpoea::pagmo_wrappers::PagmoSgaFactory>(); },
+             [](hpoea::core::ParameterSet &p) {
+                 p.emplace("crossover_probability", 0.9);
+                 p.emplace("mutation_probability", 0.02);
+             }},
+            {"DE1220", [] { return std::make_unique<hpoea::pagmo_wrappers::PagmoDe1220Factory>(); },
+             [](hpoea::core::ParameterSet &p) {
+                 p.emplace("variant_adaptation", std::int64_t{1});
+                 p.emplace("memory", false);
+             }},
+            {"CMA-ES", [] { return std::make_unique<hpoea::pagmo_wrappers::PagmoCmaesFactory>(); },
+             [](hpoea::core::ParameterSet &p) {
+                 p.emplace("sigma0", 0.5);
+                 p.emplace("ftol", 1e-6);
+                 p.emplace("xtol", 1e-6);
+             }},
+        };
+
+        for (const auto &c : cases) {
+            const std::string name = c.name;
+            hpoea::core::ParameterSet params;
+            params.emplace("population_size", std::int64_t{20});
+            params.emplace("generations", std::int64_t{5});
+            c.extra(params);
+
+            auto factory = c.make();
+            const auto r1 = run_algo(*factory, sphere, params, budget, 42UL);
+            HPOEA_V2_CHECK(runner, r1.status == hpoea::core::RunStatus::Success,
+                           name + " run returns Success");
+            HPOEA_V2_CHECK(runner, r1.best_solution.size() == sphere.dimension() &&
+                                      std::isfinite(r1.best_fitness),
+                           name + " produces finite best_fitness of correct dimension");
+            HPOEA_V2_CHECK(runner, r1.seed == 42UL, name + " records the requested seed");
+
+            const auto r2 = run_algo(*c.make(), sphere, params, budget, 42UL);
+            HPOEA_V2_CHECK(runner, r1.best_fitness == r2.best_fitness &&
+                                      vector_equal(r1.best_solution, r2.best_solution),
+                           name + " deterministic for same seed");
+
+            ThrowingProblem throwing_problem;
+            hpoea::core::Budget throw_budget;
+            throw_budget.generations = 2u;
+            hpoea::core::ParameterSet throw_params;
+            throw_params.emplace("population_size", std::int64_t{20});
+            throw_params.emplace("generations", std::int64_t{2});
+            const auto rt = run_algo(*c.make(), throwing_problem, throw_params, throw_budget, 99UL);
+            HPOEA_V2_CHECK(runner, rt.status == hpoea::core::RunStatus::FailedEvaluation,
+                           name + " maps evaluation exceptions to FailedEvaluation");
+
+            bool threw = false;
+            try {
+                hpoea::core::ParameterSet bad;
+                bad.emplace("population_size", std::int64_t{1});
+                c.make()->create()->configure(bad);
+            } catch (const hpoea::core::ParameterValidationError &) {
+                threw = true;
+            }
+            HPOEA_V2_CHECK(runner, threw, name + " rejects invalid population size");
+        }
+    }
+
+
+    {
+        // DE respects the generation budget
+        // zero-generation budget is BudgetExceeded (C06)
         hpoea::pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
         hpoea::core::ParameterSet params;
         params.emplace("population_size", std::int64_t{20});
@@ -60,19 +178,6 @@ int main() {
         params.emplace("variant", std::int64_t{2});
 
         const auto result = run_algo(factory, sphere, params, budget, 42UL);
-        HPOEA_V2_CHECK(runner, result.status == hpoea::core::RunStatus::Success,
-                       "DE run returns Success");
-        HPOEA_V2_CHECK(runner, result.best_solution.size() == sphere.dimension(),
-                       "DE best_solution has correct dimension");
-        HPOEA_V2_CHECK(runner, std::isfinite(result.best_fitness),
-                       "DE best_fitness is finite");
-
-        const auto result2 = run_algo(factory, sphere, params, budget, 42UL);
-        HPOEA_V2_CHECK(runner, result.best_fitness == result2.best_fitness,
-                       "DE is deterministic for same seed");
-        HPOEA_V2_CHECK(runner, vector_equal(result.best_solution, result2.best_solution),
-                       "DE best_solution identical for same seed");
-
         HPOEA_V2_CHECK(runner, result.algorithm_usage.generations <= 5u,
                        "DE generations within budget");
         HPOEA_V2_CHECK(runner, result.algorithm_usage.generations > 0u,
@@ -85,196 +190,6 @@ int main() {
                        "DE zero generation budget returns BudgetExceeded");
         HPOEA_V2_CHECK(runner, zero_result.algorithm_usage.generations == 0u,
                        "DE respects zero generation budget");
-
-        bool threw = false;
-        try {
-            hpoea::core::ParameterSet bad;
-            bad.emplace("population_size", std::int64_t{1});
-            auto algo = factory.create();
-            algo->configure(bad);
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "DE rejects invalid population size");
-    }
-
-
-    {
-        hpoea::pagmo_wrappers::PagmoParticleSwarmOptimizationFactory factory;
-        hpoea::core::ParameterSet params;
-        params.emplace("population_size", std::int64_t{20});
-        params.emplace("generations", std::int64_t{5});
-        params.emplace("omega", 0.7);
-        params.emplace("eta1", 2.0);
-        params.emplace("eta2", 2.0);
-        params.emplace("max_velocity", 0.5);
-        params.emplace("variant", std::int64_t{5});
-
-        const auto result = run_algo(factory, sphere, params, budget, 42UL);
-        HPOEA_V2_CHECK(runner, result.status == hpoea::core::RunStatus::Success,
-                       "PSO run returns Success");
-        HPOEA_V2_CHECK(runner, result.best_solution.size() == sphere.dimension(),
-                       "PSO best_solution has correct dimension");
-        HPOEA_V2_CHECK(runner, std::isfinite(result.best_fitness),
-                       "PSO best_fitness is finite");
-
-        const auto result2 = run_algo(factory, sphere, params, budget, 42UL);
-        HPOEA_V2_CHECK(runner, result.best_fitness == result2.best_fitness,
-                       "PSO deterministic for same seed");
-        HPOEA_V2_CHECK(runner, vector_equal(result.best_solution, result2.best_solution),
-                       "PSO best_solution identical for same seed");
-
-        bool threw = false;
-        try {
-            hpoea::core::ParameterSet bad;
-            bad.emplace("population_size", std::int64_t{1});
-            auto algo = factory.create();
-            algo->configure(bad);
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "PSO rejects invalid population size");
-    }
-
-
-    {
-        hpoea::pagmo_wrappers::PagmoSelfAdaptiveDEFactory factory;
-        hpoea::core::ParameterSet params;
-        params.emplace("population_size", std::int64_t{20});
-        params.emplace("generations", std::int64_t{5});
-        params.emplace("variant", std::int64_t{2});
-        params.emplace("variant_adptv", std::int64_t{1});
-
-        const auto result = run_algo(factory, sphere, params, budget, 42UL);
-        HPOEA_V2_CHECK(runner, result.status == hpoea::core::RunStatus::Success,
-                       "SADE run returns Success");
-        HPOEA_V2_CHECK(runner, result.best_solution.size() == sphere.dimension(),
-                       "SADE best_solution has correct dimension");
-        HPOEA_V2_CHECK(runner, std::isfinite(result.best_fitness),
-                       "SADE best_fitness is finite");
-
-        const auto result2 = run_algo(factory, sphere, params, budget, 42UL);
-        HPOEA_V2_CHECK(runner, result.best_fitness == result2.best_fitness,
-                       "SADE is deterministic for same seed");
-        HPOEA_V2_CHECK(runner, vector_equal(result.best_solution, result2.best_solution),
-                       "SADE best_solution identical for same seed");
-
-        bool threw = false;
-        try {
-            hpoea::core::ParameterSet bad;
-            bad.emplace("population_size", std::int64_t{1});
-            auto algo = factory.create();
-            algo->configure(bad);
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "SADE rejects invalid population size");
-    }
-
-
-    {
-        hpoea::pagmo_wrappers::PagmoSgaFactory factory;
-        hpoea::core::ParameterSet params;
-        params.emplace("population_size", std::int64_t{20});
-        params.emplace("generations", std::int64_t{5});
-        params.emplace("crossover_probability", 0.9);
-        params.emplace("mutation_probability", 0.02);
-
-        const auto result = run_algo(factory, sphere, params, budget, 42UL);
-        HPOEA_V2_CHECK(runner, result.status == hpoea::core::RunStatus::Success,
-                       "SGA run returns Success");
-        HPOEA_V2_CHECK(runner, result.best_solution.size() == sphere.dimension(),
-                       "SGA best_solution has correct dimension");
-        HPOEA_V2_CHECK(runner, std::isfinite(result.best_fitness),
-                       "SGA best_fitness is finite");
-
-        const auto result2 = run_algo(factory, sphere, params, budget, 42UL);
-        HPOEA_V2_CHECK(runner, result.best_fitness == result2.best_fitness,
-                       "SGA is deterministic for same seed");
-        HPOEA_V2_CHECK(runner, vector_equal(result.best_solution, result2.best_solution),
-                       "SGA best_solution identical for same seed");
-
-        bool threw = false;
-        try {
-            hpoea::core::ParameterSet bad;
-            bad.emplace("population_size", std::int64_t{1});
-            auto algo = factory.create();
-            algo->configure(bad);
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "SGA rejects invalid population size");
-    }
-
-
-    {
-        hpoea::pagmo_wrappers::PagmoDe1220Factory factory;
-        hpoea::core::ParameterSet params;
-        params.emplace("population_size", std::int64_t{20});
-        params.emplace("generations", std::int64_t{5});
-        params.emplace("variant_adaptation", std::int64_t{1});
-        params.emplace("memory", false);
-
-        const auto result = run_algo(factory, sphere, params, budget, 42UL);
-        HPOEA_V2_CHECK(runner, result.status == hpoea::core::RunStatus::Success,
-                       "DE1220 run returns Success");
-        HPOEA_V2_CHECK(runner, result.best_solution.size() == sphere.dimension(),
-                       "DE1220 best_solution has correct dimension");
-        HPOEA_V2_CHECK(runner, std::isfinite(result.best_fitness),
-                       "DE1220 best_fitness is finite");
-
-        const auto result2 = run_algo(factory, sphere, params, budget, 42UL);
-        HPOEA_V2_CHECK(runner, result.best_fitness == result2.best_fitness,
-                       "DE1220 is deterministic for same seed");
-        HPOEA_V2_CHECK(runner, vector_equal(result.best_solution, result2.best_solution),
-                       "DE1220 best_solution identical for same seed");
-
-        bool threw = false;
-        try {
-            hpoea::core::ParameterSet bad;
-            bad.emplace("population_size", std::int64_t{1});
-            auto algo = factory.create();
-            algo->configure(bad);
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "DE1220 rejects invalid population size");
-    }
-
-
-    {
-        hpoea::pagmo_wrappers::PagmoCmaesFactory factory;
-        hpoea::core::ParameterSet params;
-        params.emplace("population_size", std::int64_t{20});
-        params.emplace("generations", std::int64_t{5});
-        params.emplace("sigma0", 0.5);
-        params.emplace("ftol", 1e-6);
-        params.emplace("xtol", 1e-6);
-
-        const auto result = run_algo(factory, sphere, params, budget, 42UL);
-        HPOEA_V2_CHECK(runner, result.status == hpoea::core::RunStatus::Success,
-                       "CMA-ES run returns Success");
-        HPOEA_V2_CHECK(runner, result.best_solution.size() == sphere.dimension(),
-                       "CMA-ES best_solution has correct dimension");
-        HPOEA_V2_CHECK(runner, std::isfinite(result.best_fitness),
-                       "CMA-ES best_fitness is finite");
-
-        const auto result2 = run_algo(factory, sphere, params, budget, 42UL);
-        HPOEA_V2_CHECK(runner, result.best_fitness == result2.best_fitness,
-                       "CMA-ES is deterministic for same seed");
-        HPOEA_V2_CHECK(runner, vector_equal(result.best_solution, result2.best_solution),
-                       "CMA-ES best_solution identical for same seed");
-
-        bool threw = false;
-        try {
-            hpoea::core::ParameterSet bad;
-            bad.emplace("population_size", std::int64_t{1});
-            auto algo = factory.create();
-            algo->configure(bad);
-        } catch (const hpoea::core::ParameterValidationError &) {
-            threw = true;
-        }
-        HPOEA_V2_CHECK(runner, threw, "CMA-ES rejects invalid population size");
     }
 
 
@@ -296,209 +211,107 @@ int main() {
 
 
     {
-        hpoea::pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
-        hpoea::core::ParameterSet params;
-        params.emplace("population_size", std::int64_t{20});
-        params.emplace("generations", std::int64_t{10});
-        params.emplace("scaling_factor", 0.7);
-        params.emplace("crossover_rate", 0.9);
-        params.emplace("variant", std::int64_t{2});
-
-        hpoea::core::Budget local_budget;
-        local_budget.generations = 10u;
-
-        const auto r1 = run_algo(factory, sphere, params, local_budget, 42UL);
-        const auto r2 = run_algo(factory, sphere, params, local_budget, 99UL);
-        HPOEA_V2_CHECK(runner, r1.seed == 42UL && r2.seed == 99UL,
-                       "DE records requested seeds for independent runs");
-        HPOEA_V2_CHECK(runner, r1.status == hpoea::core::RunStatus::Success &&
-                                  r2.status == hpoea::core::RunStatus::Success,
-                       "DE different seeds both complete successfully");
-        HPOEA_V2_CHECK(runner, std::isfinite(r1.best_fitness) && std::isfinite(r2.best_fitness),
-                       "DE different seeds both produce finite fitness");
-    }
-
-
-    {
-        ThrowingProblem throwing_problem;
         hpoea::pagmo_wrappers::PagmoParticleSwarmOptimizationFactory factory;
-        hpoea::core::ParameterSet params;
-        params.emplace("population_size", std::int64_t{20});
-        params.emplace("generations", std::int64_t{2});
-        hpoea::core::Budget local_budget;
-        local_budget.generations = 2u;
-        const auto result = run_algo(factory, throwing_problem, params, local_budget, 99UL);
-        HPOEA_V2_CHECK(runner, result.status == hpoea::core::RunStatus::FailedEvaluation,
-                       "PSO: evaluation exceptions map to FailedEvaluation");
-    }
+        const auto &space = factory.parameter_space();
+        const auto &mv = space.descriptor("max_velocity");
+        HPOEA_V2_CHECK(runner, mv.continuous_range.has_value(), "PSO max_velocity has continuous range");
+        HPOEA_V2_CHECK(runner, mv.continuous_range->lower == 0.01,
+                       "PSO max_velocity lower bound is 0.01 (pagmo requires > 0)");
+        HPOEA_V2_CHECK(runner, mv.continuous_range->upper == 1.0,
+                       "PSO max_velocity upper bound is 1.0 (pagmo requires <= 1)");
 
-
-    {
-        ThrowingProblem throwing_problem;
-        hpoea::pagmo_wrappers::PagmoSelfAdaptiveDEFactory factory;
-        hpoea::core::ParameterSet params;
-        params.emplace("population_size", std::int64_t{20});
-        params.emplace("generations", std::int64_t{2});
-        hpoea::core::Budget local_budget;
-        local_budget.generations = 2u;
-        const auto result = run_algo(factory, throwing_problem, params, local_budget, 99UL);
-        HPOEA_V2_CHECK(runner, result.status == hpoea::core::RunStatus::FailedEvaluation,
-                       "SADE: evaluation exceptions map to FailedEvaluation");
-    }
-
-
-    {
-        ThrowingProblem throwing_problem;
-        hpoea::pagmo_wrappers::PagmoSgaFactory factory;
-        hpoea::core::ParameterSet params;
-        params.emplace("population_size", std::int64_t{20});
-        params.emplace("generations", std::int64_t{2});
-        hpoea::core::Budget local_budget;
-        local_budget.generations = 2u;
-        const auto result = run_algo(factory, throwing_problem, params, local_budget, 99UL);
-        HPOEA_V2_CHECK(runner, result.status == hpoea::core::RunStatus::FailedEvaluation,
-                       "SGA: evaluation exceptions map to FailedEvaluation");
-    }
-
-
-    {
-        ThrowingProblem throwing_problem;
-        hpoea::pagmo_wrappers::PagmoDe1220Factory factory;
-        hpoea::core::ParameterSet params;
-        params.emplace("population_size", std::int64_t{20});
-        params.emplace("generations", std::int64_t{2});
-        hpoea::core::Budget local_budget;
-        local_budget.generations = 2u;
-        const auto result = run_algo(factory, throwing_problem, params, local_budget, 99UL);
-        HPOEA_V2_CHECK(runner, result.status == hpoea::core::RunStatus::FailedEvaluation,
-                       "DE1220: evaluation exceptions map to FailedEvaluation");
-    }
-
-
-    {
-        ThrowingProblem throwing_problem;
-        hpoea::pagmo_wrappers::PagmoCmaesFactory factory;
-        hpoea::core::ParameterSet params;
-        params.emplace("population_size", std::int64_t{20});
-        params.emplace("generations", std::int64_t{2});
-        hpoea::core::Budget local_budget;
-        local_budget.generations = 2u;
-        const auto result = run_algo(factory, throwing_problem, params, local_budget, 99UL);
-        HPOEA_V2_CHECK(runner, result.status == hpoea::core::RunStatus::FailedEvaluation,
-                       "CMA-ES: evaluation exceptions map to FailedEvaluation");
-    }
-
-
-    {
-        hpoea::pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
-        hpoea::core::ParameterSet params;
-        params.emplace("population_size", std::int64_t{20});
-        params.emplace("generations", std::int64_t{5});
-        params.emplace("scaling_factor", 0.7);
-        params.emplace("crossover_rate", 0.9);
-        params.emplace("variant", std::int64_t{2});
-
-        const auto result = run_algo(factory, sphere, params, budget, 42UL);
-        HPOEA_V2_CHECK(runner, result.algorithm_usage.function_evaluations > 0u,
-                       "DE function_evaluations is positive");
-        HPOEA_V2_CHECK(runner, result.algorithm_usage.function_evaluations >= 20u,
-                       "DE function_evaluations at least population_size");
-    }
-
-
-    {
-        auto algo = hpoea::pagmo_wrappers::PagmoDifferentialEvolutionFactory().create();
-        hpoea::core::ParameterSet bad_params;
-        bad_params["crossover_rate"] = 5.0;
         bool threw = false;
         try {
-            algo->configure(bad_params);
+            hpoea::core::ParameterSet bad;
+            bad.emplace("population_size", std::int64_t{20});
+            bad.emplace("max_velocity", 0.0);
+            auto algo = factory.create();
+            algo->configure(bad);
         } catch (const hpoea::core::ParameterValidationError &) {
             threw = true;
         }
-        HPOEA_V2_CHECK(runner, threw,
-            "configure() with out-of-range param throws ParameterValidationError");
+        HPOEA_V2_CHECK(runner, threw, "PSO rejects max_velocity=0 (out of pagmo range)");
     }
 
 
     {
-        hpoea::wrappers::problems::SphereProblem sphere(2);
-        hpoea::pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
-        hpoea::core::Budget budget;
-        budget.generations = 10;
+        struct UnboundedDescent final : hpoea::core::IProblem {
+            hpoea::core::ProblemMetadata metadata_{};
+            [[nodiscard]] const hpoea::core::ProblemMetadata &metadata() const noexcept override { return metadata_; }
+            [[nodiscard]] std::size_t dimension() const override { return 1; }
+            [[nodiscard]] std::vector<double> lower_bounds() const override { return {-1.0}; }
+            [[nodiscard]] std::vector<double> upper_bounds() const override { return {1.0}; }
+            [[nodiscard]] double evaluate(const std::vector<double> &x) const override { return -x[0]; }
+        } problem;
 
-        for (auto variant : {std::int64_t{1}, std::int64_t{10}}) {
-            hpoea::core::ParameterSet params;
-            params.emplace("population_size", std::int64_t{20});
-            params.emplace("generations", std::int64_t{10});
-            params.emplace("crossover_rate", 0.9);
-            params.emplace("scaling_factor", 0.8);
-            params.emplace("variant", variant);
-            params.emplace("ftol", 1e-12);
-            params.emplace("xtol", 1e-12);
-
-            auto result = run_algo(factory, sphere, params, budget, 42UL);
-            HPOEA_V2_CHECK(runner,
-                result.status == hpoea::core::RunStatus::Success,
-                "DE variant=" + std::to_string(variant) + " runs successfully");
-            HPOEA_V2_CHECK(runner,
-                std::isfinite(result.best_fitness),
-                "DE variant=" + std::to_string(variant) + " produces finite fitness");
-        }
-    }
-
-
-    {
-        hpoea::wrappers::problems::SphereProblem sphere(2);
-        hpoea::pagmo_wrappers::PagmoParticleSwarmOptimizationFactory factory;
-        hpoea::core::Budget budget;
-        budget.generations = 10;
-
-        for (auto variant : {std::int64_t{1}, std::int64_t{6}}) {
-            hpoea::core::ParameterSet params;
-            params.emplace("population_size", std::int64_t{20});
-            params.emplace("generations", std::int64_t{10});
-            params.emplace("omega", 0.7298);
-            params.emplace("eta1", 2.05);
-            params.emplace("eta2", 2.05);
-            params.emplace("max_velocity", 0.5);
-            params.emplace("variant", variant);
-
-            auto result = run_algo(factory, sphere, params, budget, 42UL);
-            HPOEA_V2_CHECK(runner,
-                result.status == hpoea::core::RunStatus::Success,
-                "PSO variant=" + std::to_string(variant) + " runs successfully");
-            HPOEA_V2_CHECK(runner,
-                std::isfinite(result.best_fitness),
-                "PSO variant=" + std::to_string(variant) + " produces finite fitness");
-        }
-    }
-
-
-    {
-        hpoea::wrappers::problems::SphereProblem sphere(2);
-        hpoea::pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
-        hpoea::core::Budget budget;
-        budget.generations = 10;
-
-
+        hpoea::pagmo_wrappers::PagmoCmaesFactory factory;
         hpoea::core::ParameterSet params;
         params.emplace("population_size", std::int64_t{20});
-        params.emplace("generations", std::int64_t{10});
-        params.emplace("crossover_rate", 1.0);
-        params.emplace("scaling_factor", 0.0);
-        params.emplace("variant", std::int64_t{2});
+        params.emplace("generations", std::int64_t{50});
+        params.emplace("sigma0", 0.5);
         params.emplace("ftol", 1e-12);
         params.emplace("xtol", 1e-12);
+        hpoea::core::Budget budget;
+        budget.generations = 50u;
 
-        auto result = run_algo(factory, sphere, params, budget, 42UL);
-        HPOEA_V2_CHECK(runner,
-            result.status == hpoea::core::RunStatus::Success,
-            "DE scaling_factor=0 crossover_rate=1 runs successfully");
-        HPOEA_V2_CHECK(runner,
-            std::isfinite(result.best_fitness),
-            "DE boundary params produce finite fitness");
+        const auto result = run_algo(factory, problem, params, budget, 42UL);
+        HPOEA_V2_CHECK(runner, result.status == hpoea::core::RunStatus::Success,
+                       "CMA-ES run returns Success on unbounded-descent problem");
+        HPOEA_V2_CHECK(runner, result.best_solution.size() == 1u,
+                       "CMA-ES best_solution has correct dimension");
+        bool inside = !result.best_solution.empty() &&
+                      result.best_solution[0] >= -1.0 &&
+                      result.best_solution[0] <= 1.0;
+        HPOEA_V2_CHECK(runner, inside,
+                       "CMA-ES force_bounds keeps champion inside box bounds");
     }
+
+
+    {
+        hpoea::wrappers::problems::SphereProblem sphere(2);
+        hpoea::core::Budget budget;
+        budget.generations = 1u;
+
+        struct Case {
+            const char *name;
+            std::function<std::unique_ptr<hpoea::core::IEvolutionaryAlgorithmFactory>()> make;
+        };
+        Case cases[] = {
+            {"DE",    []{ return std::make_unique<hpoea::pagmo_wrappers::PagmoDifferentialEvolutionFactory>(); }},
+            {"SADE",  []{ return std::make_unique<hpoea::pagmo_wrappers::PagmoSelfAdaptiveDEFactory>(); }},
+            {"DE1220",[]{ return std::make_unique<hpoea::pagmo_wrappers::PagmoDe1220Factory>(); }},
+            {"PSO",   []{ return std::make_unique<hpoea::pagmo_wrappers::PagmoParticleSwarmOptimizationFactory>(); }},
+            {"SGA",   []{ return std::make_unique<hpoea::pagmo_wrappers::PagmoSgaFactory>(); }},
+            {"CMAES", []{ return std::make_unique<hpoea::pagmo_wrappers::PagmoCmaesFactory>(); }},
+        };
+
+        for (const auto &c : cases) {
+            for (const char *endpoint : {"min", "max"}) {
+                auto factory = c.make();
+                auto params = endpoint_params(factory->parameter_space(), endpoint);
+                params["generations"] = std::int64_t{1};
+                auto algo = factory->create();
+                algo->configure(params);
+                bool threw = false;
+                std::string msg;
+                try {
+                    auto result = algo->run(sphere, budget, 123UL);
+                    if (result.status != hpoea::core::RunStatus::Success &&
+                        result.status != hpoea::core::RunStatus::BudgetExceeded) {
+                        threw = true;
+                        msg = result.message;
+                    }
+                } catch (const std::exception &ex) {
+                    threw = true;
+                    msg = ex.what();
+                }
+                HPOEA_V2_CHECK(runner, !threw,
+                    std::string(c.name) + " " + endpoint + " endpoint sweep runs without throwing" +
+                    (msg.empty() ? "" : (" (msg=" + msg + ")")));
+            }
+        }
+    }
+
 
     return runner.summarize("evolutionary_algorithms_tests");
 }
