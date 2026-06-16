@@ -11,7 +11,9 @@
 #include <memory>
 #include <pagmo/population.hpp>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace hpoea::pagmo_wrappers {
@@ -39,61 +41,60 @@ make_hyper_context(const core::IEvolutionaryAlgorithmFactory &factory,
     return ctx;
 }
 
-// nan-safe comparator for trial records.
-// treats non-finite fitness values as worse than any finite value.
-inline auto nan_safe_trial_comparator() {
-    return [](const core::HyperparameterTrialRecord &a,
-              const core::HyperparameterTrialRecord &b) {
-        const auto fa = a.optimization_result.best_fitness;
-        const auto fb = b.optimization_result.best_fitness;
-        if (!std::isfinite(fa)) return false;
-        if (!std::isfinite(fb)) return true;
-        return fa < fb;
-    };
-}
+// outcome of an optimizer's evolve lambda
+// consumed by fill_hyper_result
+struct HyperEvolveOutcome {
+    std::size_t iterations{0};
+    core::ParameterSet effective_parameters;  // configured params with control value clamped to budget
+    std::string starved_message;  // non-empty when budget too small for any evolve so not Success
+};
 
 inline core::HyperparameterOptimizationResult fill_hyper_result(
     HyperparameterTuningProblem::Context &ctx,
-    const pagmo::population &population,
-    std::size_t generations,
+    HyperEvolveOutcome outcome,
     std::chrono::steady_clock::time_point start,
-    std::chrono::steady_clock::time_point end,
-    const core::ParameterSet &optimizer_params) {
+    std::chrono::steady_clock::time_point end) {
     core::HyperparameterOptimizationResult result;
-    result.status = core::RunStatus::Success;
 
     if (ctx.trials) {
         result.trials = std::move(*ctx.trials);
     }
 
-    if (auto best = ctx.get_best_trial()) {
+    // never report Success on an all-failed run
+    // mirrors random_search_optimizer.cpp
+    if (auto best = ctx.get_best_trial(); best && is_selectable_trial(*best)) {
+        result.status = core::RunStatus::Success;
         result.best_parameters = best->parameters;
         result.best_objective = best->optimization_result.best_fitness;
+        result.message = "hyperparameter optimization completed";
     } else if (!result.trials.empty()) {
-        auto it = std::min_element(result.trials.begin(), result.trials.end(),
-            nan_safe_trial_comparator());
-        if (it != result.trials.end() && std::isfinite(it->optimization_result.best_fitness)) {
-            result.best_parameters = it->parameters;
-            result.best_objective = it->optimization_result.best_fitness;
-        } else {
-            result.status = core::RunStatus::InternalError;
-            result.message = "no valid hyperparameter trial was recorded";
-            result.best_objective = std::numeric_limits<double>::infinity();
-        }
+        const auto &first = result.trials.front().optimization_result;
+        result.status = first.status;
+        result.best_objective = std::numeric_limits<double>::infinity();
+        result.error_info = first.error_info;
+        result.message = first.message.empty()
+            ? "hyperparameter optimization produced no successful finite trial"
+            : first.message;
     } else {
         result.status = core::RunStatus::InternalError;
-        result.message = "no valid hyperparameter trial was recorded";
         result.best_objective = std::numeric_limits<double>::infinity();
+        result.error_info = core::ErrorInfo{
+            "internal_error", "no_valid_trial", "hyperparameter optimization produced no trial"};
+        result.message = "no valid hyperparameter trial was recorded";
+    }
+
+    // zero outer iterations did no real work despite initial pop
+    // not Success
+    if (!outcome.starved_message.empty() && result.status == core::RunStatus::Success) {
+        result.status = core::RunStatus::BudgetExceeded;
+        result.message = std::move(outcome.starved_message);
     }
 
     result.optimizer_usage.wall_time =
         std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    result.optimizer_usage.iterations = generations;
+    result.optimizer_usage.iterations = outcome.iterations;
     result.optimizer_usage.objective_calls = ctx.get_evaluations();
-    result.effective_optimizer_parameters = optimizer_params;
-    if (result.status == core::RunStatus::Success) {
-        result.message = "hyperparameter optimization completed";
-    }
+    result.effective_optimizer_parameters = std::move(outcome.effective_parameters);
     return result;
 }
 
@@ -103,9 +104,7 @@ inline core::HyperparameterOptimizationResult fill_hyper_result(
 //   (pagmo::problem &tuning_problem, const std::pair<pagmo::vector_double, pagmo::vector_double> &bounds,
 //    const core::Budget &optimizer_budget, std::chrono::steady_clock::time_point start,
 //    HyperparameterTuningProblem::Context &ctx)
-//   -> std::pair<pagmo::population, std::size_t>
-//
-// it should create/evolve a population and return it along with actual_iterations.
+//   -> HyperEvolveOutcome
 template <typename AlgorithmSetup>
 core::HyperparameterOptimizationResult run_hyper_optimization(
     const core::IEvolutionaryAlgorithmFactory &algorithm_factory,
@@ -113,13 +112,12 @@ core::HyperparameterOptimizationResult run_hyper_optimization(
     const core::Budget &optimizer_budget,
     const core::Budget &algorithm_budget,
     unsigned long seed,
-    const core::ParameterSet &configured_parameters,
     const std::shared_ptr<core::SearchSpace> &search_space,
     AlgorithmSetup &&setup) {
 
     static_assert(
         std::is_invocable_r_v<
-            std::pair<pagmo::population, std::size_t>,
+            HyperEvolveOutcome,
             AlgorithmSetup,
             pagmo::problem &,
             const std::pair<pagmo::vector_double, pagmo::vector_double> &,
@@ -127,7 +125,7 @@ core::HyperparameterOptimizationResult run_hyper_optimization(
             std::chrono::steady_clock::time_point,
             HyperparameterTuningProblem::Context &>,
         "AlgorithmSetup must be callable with "
-        "(problem&, bounds&, budget&, start_time, context&) -> pair<population, size_t>");
+        "(problem&, bounds&, budget&, start_time, context&) -> HyperEvolveOutcome");
 
     core::HyperparameterOptimizationResult result;
     result.status = core::RunStatus::InternalError;
@@ -147,13 +145,11 @@ core::HyperparameterOptimizationResult run_hyper_optimization(
         const auto bounds = udp.get_bounds();
         pagmo::problem tuning_problem{udp};
 
-        auto [population, actual_iterations] =
-            setup(tuning_problem, bounds, optimizer_budget, start_time, *ctx);
+        auto outcome = setup(tuning_problem, bounds, optimizer_budget, start_time, *ctx);
 
         const auto end_time = std::chrono::steady_clock::now();
 
-        result = fill_hyper_result(*ctx, population, actual_iterations,
-                                   start_time, end_time, configured_parameters);
+        result = fill_hyper_result(*ctx, std::move(outcome), start_time, end_time);
         result.seed = seed;
         core::apply_optimizer_budget_status(
             optimizer_budget,
@@ -164,6 +160,10 @@ core::HyperparameterOptimizationResult run_hyper_optimization(
         const auto end_time = std::chrono::steady_clock::now();
         result.optimizer_usage.wall_time =
             std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        // recover evaluations done before the throw so a crashed run still counts them
+        if (ctx) {
+            result.optimizer_usage.objective_calls = ctx->get_evaluations();
+        }
         result.message = ex.what();
 
         const auto classified = core::classify_exception(ex);
@@ -171,14 +171,14 @@ core::HyperparameterOptimizationResult run_hyper_optimization(
         result.error_info = classified.error_info;
     }
 
-    // fallback: if we have trials from before the exception, recover the best one
-    if (ctx && ctx->trials && !ctx->trials->empty() && result.trials.empty()) {
+    // fallback path
+    // recover trials from before the exception
+    // pick the best selectable one
+    if (ctx && !ctx->trials->empty() && result.trials.empty()) {
         result.trials = std::move(*ctx->trials);
-        auto it = std::min_element(result.trials.begin(), result.trials.end(),
-            nan_safe_trial_comparator());
-        if (it != result.trials.end() && std::isfinite(it->optimization_result.best_fitness)) {
-            result.best_parameters = it->parameters;
-            result.best_objective = it->optimization_result.best_fitness;
+        if (auto best = ctx->get_best_trial(); best && is_selectable_trial(*best)) {
+            result.best_parameters = best->parameters;
+            result.best_objective = best->optimization_result.best_fitness;
         }
     }
 

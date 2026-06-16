@@ -55,7 +55,8 @@ ParameterSpace make_parameter_space() {
     d = {};
     d.name = "max_velocity";
     d.type = ParameterType::Continuous;
-    d.continuous_range = hpoea::core::ContinuousRange{0.0, 100.0};
+    // pagmo::pso requires max_vel in (0, 1]
+    d.continuous_range = hpoea::core::ContinuousRange{0.01, 1.0};
     d.default_value = 0.5;
     space.add_descriptor(d);
 
@@ -86,12 +87,12 @@ core::HyperparameterOptimizationResult PagmoPsoHyperOptimizer::optimize(
 
     return run_hyper_optimization(
         algorithm_factory, problem, optimizer_budget, algorithm_budget,
-        seed, configured_parameters_, search_space_,
+        seed, search_space_,
         [&](pagmo::problem &tuning_problem,
             const auto &bounds,
             const core::Budget &budget,
-            std::chrono::steady_clock::time_point start,
-            HyperparameterTuningProblem::Context &) -> std::pair<pagmo::population, std::size_t> {
+            std::chrono::steady_clock::time_point,
+            HyperparameterTuningProblem::Context &) -> HyperEvolveOutcome {
 
             const auto omega = get_param<double>(configured_parameters_, "omega");
             const auto eta1 = get_param<double>(configured_parameters_, "eta1");
@@ -108,20 +109,33 @@ core::HyperparameterOptimizationResult PagmoPsoHyperOptimizer::optimize(
             const auto pop_size = static_cast<pagmo::population::size_type>(
                 std::max(dim * 4, dim + 1));
 
-            auto generations = clamp_hyper_generations(
-                get_param<std::int64_t>(configured_parameters_, "generations"),
-                budget, static_cast<std::size_t>(pop_size));
+            const auto configured_generations =
+                get_param<std::int64_t>(configured_parameters_, "generations");
+            const auto generations = clamp_hyper_generations(
+                configured_generations, budget, static_cast<std::size_t>(pop_size));
             const auto gen_u = static_cast<unsigned>(std::min(generations, uint_max));
 
+            // pso must run as one N-generation evolve
+            // so only the pre-run clamp can bound it
             pagmo::algorithm algorithm{
                 pagmo::pso(gen_u, omega, eta1, eta2, max_vel, variant, 2u, 4u, false, seed32)};
 
-            pagmo::population population{tuning_problem, pop_size, derive_seed(seed, 1)};
+            pagmo::population population{tuning_problem, pop_size, derive_seed32(seed, 0)};
             if (gen_u > 0) {
                 population = algorithm.evolve(population);
             }
 
-            return {std::move(population), generations};
+            auto effective_parameters = configured_parameters_;
+            effective_parameters.insert_or_assign("generations", static_cast<std::int64_t>(generations));
+
+            HyperEvolveOutcome outcome;
+            outcome.iterations = generations;
+            outcome.effective_parameters = std::move(effective_parameters);
+            if (generations == 0 && configured_generations > 0) {
+                outcome.starved_message =
+                    "budget insufficient for any generations; only initial population evaluated";
+            }
+            return outcome;
         });
 }
 

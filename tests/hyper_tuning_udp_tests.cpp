@@ -9,6 +9,7 @@
 
 #include "hyper_tuning_udp.hpp"
 
+#include <atomic>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -83,6 +84,64 @@ struct StubFactory final : public hpoea::core::IEvolutionaryAlgorithmFactory {
     [[nodiscard]] const hpoea::core::AlgorithmIdentity &identity() const noexcept override {
         return id;
     }
+};
+
+// inner algorithm returning a scripted (status, fitness) per call
+// for mixed-status trials
+struct SeqEntry {
+    hpoea::core::RunStatus status;
+    double fitness;
+};
+
+class SequencedAlgorithm final : public hpoea::core::IEvolutionaryAlgorithm {
+public:
+    SequencedAlgorithm(hpoea::core::ParameterSpace space,
+                       std::shared_ptr<std::vector<SeqEntry>> seq,
+                       std::shared_ptr<std::atomic<std::size_t>> idx)
+        : space_(std::move(space)), seq_(std::move(seq)), idx_(std::move(idx)) {}
+
+    [[nodiscard]] const hpoea::core::AlgorithmIdentity &identity() const noexcept override { return id_; }
+    [[nodiscard]] const hpoea::core::ParameterSpace &parameter_space() const noexcept override { return space_; }
+
+    void configure(const hpoea::core::ParameterSet &parameters) override {
+        configured_ = space_.apply_defaults(parameters);
+    }
+
+    [[nodiscard]] hpoea::core::OptimizationResult run(const hpoea::core::IProblem &problem,
+                                                      const hpoea::core::Budget &, unsigned long seed) override {
+        hpoea::core::OptimizationResult r;
+        const auto i = idx_->fetch_add(1);
+        const auto &e = (*seq_)[i < seq_->size() ? i : seq_->size() - 1];
+        r.status = e.status;
+        r.best_fitness = e.fitness;
+        r.best_solution.assign(problem.dimension(), 0.0);
+        r.seed = seed;
+        return r;
+    }
+
+    [[nodiscard]] std::unique_ptr<hpoea::core::IEvolutionaryAlgorithm> clone() const override {
+        return std::make_unique<SequencedAlgorithm>(*this);
+    }
+
+private:
+    hpoea::core::AlgorithmIdentity id_{"Sequenced", "tests", "1.0"};
+    hpoea::core::ParameterSpace space_;
+    hpoea::core::ParameterSet configured_{};
+    std::shared_ptr<std::vector<SeqEntry>> seq_;
+    std::shared_ptr<std::atomic<std::size_t>> idx_;
+};
+
+struct SequencedFactory final : public hpoea::core::IEvolutionaryAlgorithmFactory {
+    hpoea::core::ParameterSpace space;
+    hpoea::core::AlgorithmIdentity id{"SequencedFactory", "tests", "1.0"};
+    std::shared_ptr<std::vector<SeqEntry>> seq;
+    std::shared_ptr<std::atomic<std::size_t>> idx;
+
+    [[nodiscard]] hpoea::core::EvolutionaryAlgorithmPtr create() const override {
+        return std::make_unique<SequencedAlgorithm>(space, seq, idx);
+    }
+    [[nodiscard]] const hpoea::core::ParameterSpace &parameter_space() const noexcept override { return space; }
+    [[nodiscard]] const hpoea::core::AlgorithmIdentity &identity() const noexcept override { return id; }
 };
 
 }
@@ -170,18 +229,6 @@ int main() {
 
         HPOEA_V2_CHECK(runner, nearly_equal(bv.first[1], 0.4) && nearly_equal(bv.second[1], 0.6),
                        "bounds_verification: scaling_factor bounds [0.4, 0.6]");
-
-        HPOEA_V2_CHECK(runner, nearly_equal(bv.first[2], 1.0) && nearly_equal(bv.second[2], 10.0),
-                       "bounds_verification: variant bounds [1, 10]");
-
-        HPOEA_V2_CHECK(runner, nearly_equal(bv.first[3], 1.0) && nearly_equal(bv.second[3], 1000.0),
-                       "bounds_verification: generations bounds [1, 1000]");
-
-        HPOEA_V2_CHECK(runner, nearly_equal(bv.first[4], 0.0) && nearly_equal(bv.second[4], 1.0),
-                       "bounds_verification: ftol bounds [0, 1]");
-
-        HPOEA_V2_CHECK(runner, nearly_equal(bv.first[5], 0.0) && nearly_equal(bv.second[5], 1.0),
-                       "bounds_verification: xtol bounds [0, 1]");
     }
 
     {
@@ -521,7 +568,7 @@ int main() {
                                "failed_trial_penalty: trial status preserved");
                 HPOEA_V2_CHECK(runner,
                                c->trials->back().optimization_result.seed ==
-                                   hpoea::pagmo_wrappers::derive_seed(123UL, 0UL),
+                                   hpoea::pagmo_wrappers::derive_seed32(123UL, 0UL),
                                "failed_trial_penalty: trial records deterministic evaluation seed");
             }
         }
@@ -574,6 +621,48 @@ int main() {
             }
         }
 
+    }
+
+    {
+        SequencedFactory fac;
+        {
+            hpoea::core::ParameterDescriptor d;
+            d.name = "x";
+            d.type = hpoea::core::ParameterType::Continuous;
+            d.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
+            d.default_value = 0.5;
+            fac.space.add_descriptor(d);
+        }
+        fac.seq = std::make_shared<std::vector<SeqEntry>>(std::vector<SeqEntry>{
+            {hpoea::core::RunStatus::FailedEvaluation, std::numeric_limits<double>::infinity()},
+            {hpoea::core::RunStatus::BudgetExceeded, 5.0},
+            {hpoea::core::RunStatus::FailedEvaluation, 2.0},
+        });
+        fac.idx = std::make_shared<std::atomic<std::size_t>>(0);
+
+        hpoea::wrappers::problems::SphereProblem sphere_mixed(2);
+        auto c = std::make_shared<hpoea::pagmo_wrappers::HyperparameterTuningProblem::Context>();
+        c->factory = &fac;
+        c->problem = &sphere_mixed;
+        c->algorithm_budget.generations = 1;
+        c->base_seed = 5UL;
+        c->trials = std::make_shared<std::vector<hpoea::core::HyperparameterTrialRecord>>();
+
+        hpoea::pagmo_wrappers::HyperparameterTuningProblem udp_mixed(c);
+        (void)udp_mixed.fitness({0.1});
+        (void)udp_mixed.fitness({0.2});
+        (void)udp_mixed.fitness({0.3});
+
+        HPOEA_V2_CHECK(runner, c->trials->size() == 3u, "mixed_selection: three trials recorded");
+        HPOEA_V2_CHECK(runner, hpoea::pagmo_wrappers::is_selectable_trial((*c->trials)[1]),
+                       "mixed_selection: finite BudgetExceeded trial is selectable");
+        HPOEA_V2_CHECK(runner, !hpoea::pagmo_wrappers::is_selectable_trial((*c->trials)[2]),
+                       "mixed_selection: finite FailedEvaluation trial is not selectable");
+        auto best = c->get_best_trial();
+        HPOEA_V2_CHECK(runner, best.has_value() &&
+                                  best->optimization_result.status == hpoea::core::RunStatus::BudgetExceeded &&
+                                  best->optimization_result.best_fitness == 5.0,
+                       "mixed_selection: BudgetExceeded trial (5.0) selected as best, not the lower failed 2.0");
     }
 
     return runner.summarize("hyper_tuning_udp_tests");

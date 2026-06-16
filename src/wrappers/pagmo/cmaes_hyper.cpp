@@ -74,12 +74,6 @@ ParameterSpace make_parameter_space() {
     space.add_descriptor(d);
 
     d = {};
-    d.name = "memory";
-    d.type = ParameterType::Boolean;
-    d.default_value = false;
-    space.add_descriptor(d);
-
-    d = {};
     d.name = "force_bounds";
     d.type = ParameterType::Boolean;
     d.default_value = false;
@@ -112,26 +106,28 @@ core::HyperparameterOptimizationResult PagmoCmaesHyperOptimizer::optimize(
 
     return run_hyper_optimization(
         algorithm_factory, problem, optimizer_budget, algorithm_budget,
-        seed, configured_parameters_, search_space_,
+        seed, search_space_,
         [&](pagmo::problem &tuning_problem,
             const auto &bounds,
             const core::Budget &budget,
             std::chrono::steady_clock::time_point start,
-            HyperparameterTuningProblem::Context &) -> std::pair<pagmo::population, std::size_t> {
+            HyperparameterTuningProblem::Context &ctx) -> HyperEvolveOutcome {
 
             const auto seed32 = to_seed32(seed);
             const auto dim = bounds.first.size();
+            // pagmo::cmaes requires at least 5 individuals
             const auto pop_size = static_cast<pagmo::population::size_type>(
-                std::max(dim * 4, dim + 1));
+                std::max(dim * 4, std::size_t{5}));
 
-            auto generations = clamp_hyper_generations(
-                get_param<std::int64_t>(configured_parameters_, "generations"),
-                budget, static_cast<std::size_t>(pop_size));
-            constexpr auto uint_max = static_cast<std::size_t>(std::numeric_limits<unsigned>::max());
-            const auto gen_u = static_cast<unsigned>(std::min(generations, uint_max));
+            const auto configured_generations =
+                get_param<std::int64_t>(configured_parameters_, "generations");
+            const auto generations = clamp_hyper_generations(
+                configured_generations, budget, static_cast<std::size_t>(pop_size));
 
+            // 1 gen/evolve with memory=true equals one N-gen call
+            // so budgets can bound work mid-run
             pagmo::algorithm algorithm{pagmo::cmaes{
-                gen_u,
+                1u,
                 get_param<double>(configured_parameters_, "cc"),
                 get_param<double>(configured_parameters_, "cs"),
                 get_param<double>(configured_parameters_, "c1"),
@@ -139,16 +135,44 @@ core::HyperparameterOptimizationResult PagmoCmaesHyperOptimizer::optimize(
                 get_param<double>(configured_parameters_, "sigma0"),
                 get_param<double>(configured_parameters_, "ftol"),
                 get_param<double>(configured_parameters_, "xtol"),
-                get_param<bool>(configured_parameters_, "memory"),
+                true,
                 get_param<bool>(configured_parameters_, "force_bounds"),
                 seed32}};
 
-            pagmo::population population{tuning_problem, pop_size, derive_seed(seed, 1)};
-            if (gen_u > 0) {
+            pagmo::population population{tuning_problem, pop_size, derive_seed32(seed, 0)};
+
+            std::size_t actual_iterations = 0;
+            for (std::size_t g = 0; g < generations; ++g) {
+                const auto before = ctx.get_evaluations();
                 population = algorithm.evolve(population);
+                if (ctx.get_evaluations() == before) {
+                    // no new evaluations means ftol/xtol converged
+                    // don't count a no-op generation
+                    break;
+                }
+                ++actual_iterations;
+                if (budget.wall_time) {
+                    const auto now = std::chrono::steady_clock::now();
+                    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start);
+                    if (elapsed > *budget.wall_time)
+                        break;
+                }
+                if (budget.function_evaluations &&
+                    ctx.get_evaluations() >= *budget.function_evaluations)
+                    break;
             }
 
-            return {std::move(population), generations};
+            auto effective_parameters = configured_parameters_;
+            effective_parameters.insert_or_assign("generations", static_cast<std::int64_t>(generations));
+
+            HyperEvolveOutcome outcome;
+            outcome.iterations = actual_iterations;
+            outcome.effective_parameters = std::move(effective_parameters);
+            if (generations == 0 && configured_generations > 0) {
+                outcome.starved_message =
+                    "budget insufficient for any generations; only initial population evaluated";
+            }
+            return outcome;
         });
 }
 

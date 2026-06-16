@@ -21,6 +21,15 @@
 
 namespace hpoea::pagmo_wrappers {
 
+// mirrors is_selectable_trial in random_search_optimizer.cpp
+// keep the two in sync
+[[nodiscard]] inline bool is_selectable_trial(const core::HyperparameterTrialRecord &trial) {
+  const auto status = trial.optimization_result.status;
+  return (status == core::RunStatus::Success ||
+          status == core::RunStatus::BudgetExceeded) &&
+         std::isfinite(trial.optimization_result.best_fitness);
+}
+
 struct HyperparameterTuningProblem {
   struct Context {
     const core::IEvolutionaryAlgorithmFactory *factory{nullptr};
@@ -181,7 +190,6 @@ struct HyperparameterTuningProblem {
       }
     }
 
-    // apply defaults only for non-excluded parameters.
     for (const auto &desc : descriptors) {
       if (parameters.contains(desc.name)) continue;
       const core::ParameterConfig *pc = nullptr;
@@ -197,7 +205,7 @@ struct HyperparameterTuningProblem {
     const auto eval_index =
       ctx.evaluations.fetch_add(1, std::memory_order_relaxed);
     const unsigned long eval_seed =
-      derive_seed(ctx.base_seed, static_cast<unsigned long>(eval_index));
+      derive_seed32(ctx.base_seed, static_cast<unsigned long>(eval_index));
 
     const auto result =
         algorithm->run(*ctx.problem, ctx.algorithm_budget, eval_seed);
@@ -205,22 +213,17 @@ struct HyperparameterTuningProblem {
     core::HyperparameterTrialRecord record;
     record.parameters = parameters;
     record.optimization_result = result;
+    record.trial_index = eval_index;
 
     {
       std::scoped_lock lock(ctx.mutex);
       if (ctx.trials) {
         ctx.trials->push_back(record);
       }
-      const bool candidate_finite =
-          std::isfinite(record.optimization_result.best_fitness);
-      const bool current_finite = ctx.best_trial &&
-          std::isfinite(ctx.best_trial->optimization_result.best_fitness);
-      const bool should_update_best =
-          !ctx.best_trial ||
-          (candidate_finite && (!current_finite ||
-              record.optimization_result.best_fitness <
-                  ctx.best_trial->optimization_result.best_fitness));
-      if (should_update_best) {
+      if (is_selectable_trial(record) &&
+          (!ctx.best_trial ||
+           record.optimization_result.best_fitness <
+               ctx.best_trial->optimization_result.best_fitness)) {
         ctx.best_trial = record;
       }
     }

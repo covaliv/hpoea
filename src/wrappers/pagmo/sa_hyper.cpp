@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <string>
 #include <pagmo/algorithms/simulated_annealing.hpp>
 
 namespace {
@@ -73,7 +74,6 @@ AlgorithmIdentity make_identity() {
     return {"SimulatedAnnealing", "pagmo::simulated_annealing", "2.x"};
 }
 
-// saturating multiply for size_t
 std::size_t mul_sat(std::size_t a, std::size_t b) {
     if (a == 0 || b == 0) return 0;
     constexpr auto max_sz = std::numeric_limits<std::size_t>::max();
@@ -102,12 +102,12 @@ PagmoSimulatedAnnealingHyperOptimizer::optimize(
 
     return run_hyper_optimization(
         algorithm_factory, problem, optimizer_budget, algorithm_budget,
-        seed, configured_parameters_, search_space_,
+        seed, search_space_,
         [&](pagmo::problem &tuning_problem,
             const auto &bounds,
             const core::Budget &budget,
             std::chrono::steady_clock::time_point start,
-            HyperparameterTuningProblem::Context &ctx) -> std::pair<pagmo::population, std::size_t> {
+            HyperparameterTuningProblem::Context &ctx) -> HyperEvolveOutcome {
 
             const auto ts = get_param<double>(configured_parameters_, "ts");
             const auto tf = get_param<double>(configured_parameters_, "tf");
@@ -129,10 +129,11 @@ PagmoSimulatedAnnealingHyperOptimizer::optimize(
             pagmo::simulated_annealing sa_alg(ts, tf, n_T_adj, n_range_adj, bin_size, start_range, seed32);
             pagmo::algorithm algorithm{sa_alg};
 
-            pagmo::population population{tuning_problem, 1, derive_seed(seed, 1)};
+            pagmo::population population{tuning_problem, 1, derive_seed32(seed, 0)};
 
-            auto iterations = static_cast<unsigned>(
-                std::min(get_param<std::int64_t>(configured_parameters_, "iterations"), uint_max));
+            const auto configured_iterations =
+                get_param<std::int64_t>(configured_parameters_, "iterations");
+            auto iterations = static_cast<unsigned>(std::min(configured_iterations, uint_max));
 
             if (budget.generations) {
                 iterations = std::min(iterations,
@@ -148,8 +149,11 @@ PagmoSimulatedAnnealingHyperOptimizer::optimize(
                 dim);
 
             if (budget.function_evaluations) {
+                // reserve initial-population eval so an exact budget isn't overshot by one
+                const auto available = *budget.function_evaluations > 1
+                    ? *budget.function_evaluations - 1 : std::size_t{0};
                 auto max_evolves = static_cast<unsigned>(std::min(
-                    *budget.function_evaluations / std::max<std::size_t>(evals_per_evolve, 1),
+                    available / std::max<std::size_t>(evals_per_evolve, 1),
                     uint_max));
                 iterations = std::min(iterations, max_evolves);
             }
@@ -169,7 +173,24 @@ PagmoSimulatedAnnealingHyperOptimizer::optimize(
                     break;
             }
 
-            return {std::move(population), static_cast<std::size_t>(actual_iterations)};
+            auto effective_parameters = configured_parameters_;
+            effective_parameters.insert_or_assign("iterations", static_cast<std::int64_t>(iterations));
+
+            HyperEvolveOutcome outcome;
+            outcome.iterations = actual_iterations;
+            outcome.effective_parameters = std::move(effective_parameters);
+            // zero evolves despite positive config
+            // only initial individual scored
+            // so not Success
+            if (iterations == 0 && configured_iterations > 0) {
+                const auto min_evals = evals_per_evolve == std::numeric_limits<std::size_t>::max()
+                    ? evals_per_evolve : evals_per_evolve + 1;
+                outcome.starved_message =
+                    "budget insufficient for any evolves; minimum " + std::to_string(min_evals) +
+                    " evaluations required (1 initial + " + std::to_string(evals_per_evolve) +
+                    " per evolve)";
+            }
+            return outcome;
         });
 }
 
