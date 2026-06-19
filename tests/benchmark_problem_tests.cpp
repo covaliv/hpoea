@@ -113,8 +113,23 @@ int main() {
         const double value = problem.evaluate(selection);
         HPOEA_V2_CHECK(runner, hpoea::tests_v2::nearly_equal(value, -10.0, 1e-12),
                        "knapsack objective is negative total value when within capacity");
-        HPOEA_V2_CHECK(runner, hpoea::tests_v2::nearly_equal(problem.evaluate({1.0, 1.0, 0.0}), 23.0, 1e-12),
-                       "knapsack overweight selection applies capacity penalty");
+        HPOEA_V2_CHECK(runner, hpoea::tests_v2::nearly_equal(problem.evaluate({1.0, 1.0, 0.0}), 22.0, 1e-12),
+                       "knapsack overweight selection objective is sum of values plus violation");
+    }
+
+
+    {
+        std::vector<double> values{100.0, 100.0};
+        std::vector<double> weights{1.0, 1.0};
+        KnapsackProblem problem(values, weights, 1.95);
+        const double single = problem.evaluate({1.0, 0.0});
+        const double both = problem.evaluate({1.0, 1.0});
+        HPOEA_V2_CHECK(runner, hpoea::tests_v2::nearly_equal(single, -100.0, 1e-12),
+                       "knapsack feasible single-item objective is negative value");
+        HPOEA_V2_CHECK(runner, both > single,
+                       "knapsack infeasible both-items selection is strictly worse than feasible single-item");
+        HPOEA_V2_CHECK(runner, both > 0.0,
+                       "knapsack infeasible objective is positive (worse than every feasible objective <= 0)");
     }
 
 

@@ -277,11 +277,15 @@ double KnapsackProblem::evaluate(const std::vector<double> &decision_vector) con
         }
     }
     
-    const double penalty_factor = std::max(1.0, total_value_);
     const double capacity_violation = std::max(0.0, total_weight - capacity_);
-    const double penalty = penalty_factor * capacity_violation;
-    
-    return -(total_value - penalty);
+
+    if (capacity_violation > 0.0) {
+        // feasible objectives are <= 0
+        // this stays worse than all of them
+        return total_value_ + capacity_violation;
+    }
+
+    return -total_value;
 }
 
 } // namespace hpoea::wrappers::problems
