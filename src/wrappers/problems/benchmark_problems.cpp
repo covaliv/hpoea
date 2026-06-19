@@ -3,9 +3,12 @@
 #include "hpoea/core/problem.hpp"
 
 #include <cmath>
+#include <memory>
 #include <numbers>
 #include <numeric>
+#include <optional>
 #include <stdexcept>
+#include <string>
 
 namespace {
 
@@ -23,19 +26,26 @@ void validate_dimension(std::size_t dim, const char *problem_name) {
     }
 }
 
+hpoea::core::ProblemMetadata make_metadata(const char *id, const char *family, const char *description) {
+    hpoea::core::ProblemMetadata metadata;
+    metadata.id = id;
+    metadata.family = family;
+    metadata.description = description;
+    return metadata;
+}
+
 } // namespace
 
 namespace hpoea::wrappers::problems {
 
-SphereProblem::SphereProblem(std::size_t dimension, double lower_bound, double upper_bound) {
+SphereProblem::SphereProblem(std::size_t dimension, double lower_bound, double upper_bound)
+    : BenchmarkProblemBase(
+          make_metadata("sphere", "benchmark", "Sphere function (unimodal, separable)"),
+          dimension,
+          std::vector<double>(dimension, lower_bound),
+          std::vector<double>(dimension, upper_bound)) {
     validate_dimension(dimension, "sphere");
     validate_bounds(lower_bound, upper_bound, "sphere");
-    metadata_.id = "sphere";
-    metadata_.family = "benchmark";
-    metadata_.description = "Sphere function (unimodal, separable)";
-    dimension_ = dimension;
-    lower_bounds_.assign(dimension_, lower_bound);
-    upper_bounds_.assign(dimension_, upper_bound);
 }
 
 double SphereProblem::evaluate(const std::vector<double> &decision_vector) const {
@@ -49,17 +59,16 @@ double SphereProblem::evaluate(const std::vector<double> &decision_vector) const
     return sum;
 }
 
-RosenbrockProblem::RosenbrockProblem(std::size_t dimension, double lower_bound, double upper_bound) {
+RosenbrockProblem::RosenbrockProblem(std::size_t dimension, double lower_bound, double upper_bound)
+    : BenchmarkProblemBase(
+          make_metadata("rosenbrock", "benchmark", "Rosenbrock function (unimodal, non-separable)"),
+          dimension,
+          std::vector<double>(dimension, lower_bound),
+          std::vector<double>(dimension, upper_bound)) {
     if (dimension < 2) {
         throw std::invalid_argument("rosenbrock: dimension must be at least 2");
     }
     validate_bounds(lower_bound, upper_bound, "rosenbrock");
-    metadata_.id = "rosenbrock";
-    metadata_.family = "benchmark";
-    metadata_.description = "Rosenbrock function (unimodal, non-separable)";
-    dimension_ = dimension;
-    lower_bounds_.assign(dimension_, lower_bound);
-    upper_bounds_.assign(dimension_, upper_bound);
 }
 
 double RosenbrockProblem::evaluate(const std::vector<double> &decision_vector) const {
@@ -77,15 +86,14 @@ double RosenbrockProblem::evaluate(const std::vector<double> &decision_vector) c
     return sum;
 }
 
-RastriginProblem::RastriginProblem(std::size_t dimension, double lower_bound, double upper_bound) {
+RastriginProblem::RastriginProblem(std::size_t dimension, double lower_bound, double upper_bound)
+    : BenchmarkProblemBase(
+          make_metadata("rastrigin", "benchmark", "Rastrigin function (multimodal, separable)"),
+          dimension,
+          std::vector<double>(dimension, lower_bound),
+          std::vector<double>(dimension, upper_bound)) {
     validate_dimension(dimension, "rastrigin");
     validate_bounds(lower_bound, upper_bound, "rastrigin");
-    metadata_.id = "rastrigin";
-    metadata_.family = "benchmark";
-    metadata_.description = "Rastrigin function (multimodal, separable)";
-    dimension_ = dimension;
-    lower_bounds_.assign(dimension_, lower_bound);
-    upper_bounds_.assign(dimension_, upper_bound);
 }
 
 double RastriginProblem::evaluate(const std::vector<double> &decision_vector) const {
@@ -100,15 +108,14 @@ double RastriginProblem::evaluate(const std::vector<double> &decision_vector) co
     return sum;
 }
 
-AckleyProblem::AckleyProblem(std::size_t dimension, double lower_bound, double upper_bound) {
+AckleyProblem::AckleyProblem(std::size_t dimension, double lower_bound, double upper_bound)
+    : BenchmarkProblemBase(
+          make_metadata("ackley", "benchmark", "Ackley function (multimodal, non-separable)"),
+          dimension,
+          std::vector<double>(dimension, lower_bound),
+          std::vector<double>(dimension, upper_bound)) {
     validate_dimension(dimension, "ackley");
     validate_bounds(lower_bound, upper_bound, "ackley");
-    metadata_.id = "ackley";
-    metadata_.family = "benchmark";
-    metadata_.description = "Ackley function (multimodal, non-separable)";
-    dimension_ = dimension;
-    lower_bounds_.assign(dimension_, lower_bound);
-    upper_bounds_.assign(dimension_, upper_bound);
 }
 
 double AckleyProblem::evaluate(const std::vector<double> &decision_vector) const {
@@ -133,15 +140,14 @@ double AckleyProblem::evaluate(const std::vector<double> &decision_vector) const
     return term1 + term2 + a + std::numbers::e;
 }
 
-GriewankProblem::GriewankProblem(std::size_t dimension, double lower_bound, double upper_bound) {
+GriewankProblem::GriewankProblem(std::size_t dimension, double lower_bound, double upper_bound)
+    : BenchmarkProblemBase(
+          make_metadata("griewank", "benchmark", "Griewank function (multimodal, many local minima)"),
+          dimension,
+          std::vector<double>(dimension, lower_bound),
+          std::vector<double>(dimension, upper_bound)) {
     validate_dimension(dimension, "griewank");
     validate_bounds(lower_bound, upper_bound, "griewank");
-    metadata_.id = "griewank";
-    metadata_.family = "benchmark";
-    metadata_.description = "Griewank function (multimodal, many local minima)";
-    dimension_ = dimension;
-    lower_bounds_.assign(dimension_, lower_bound);
-    upper_bounds_.assign(dimension_, upper_bound);
 }
 
 double GriewankProblem::evaluate(const std::vector<double> &decision_vector) const {
@@ -160,15 +166,14 @@ double GriewankProblem::evaluate(const std::vector<double> &decision_vector) con
     return sum - product + 1.0;
 }
 
-SchwefelProblem::SchwefelProblem(std::size_t dimension, double lower_bound, double upper_bound) {
+SchwefelProblem::SchwefelProblem(std::size_t dimension, double lower_bound, double upper_bound)
+    : BenchmarkProblemBase(
+          make_metadata("schwefel", "benchmark", "Schwefel function (multimodal, deceptive landscape)"),
+          dimension,
+          std::vector<double>(dimension, lower_bound),
+          std::vector<double>(dimension, upper_bound)) {
     validate_dimension(dimension, "schwefel");
     validate_bounds(lower_bound, upper_bound, "schwefel");
-    metadata_.id = "schwefel";
-    metadata_.family = "benchmark";
-    metadata_.description = "Schwefel function (multimodal, deceptive landscape)";
-    dimension_ = dimension;
-    lower_bounds_.assign(dimension_, lower_bound);
-    upper_bounds_.assign(dimension_, upper_bound);
 }
 
 double SchwefelProblem::evaluate(const std::vector<double> &decision_vector) const {
@@ -185,15 +190,14 @@ double SchwefelProblem::evaluate(const std::vector<double> &decision_vector) con
     return alpha * static_cast<double>(dimension_) + sum;
 }
 
-ZakharovProblem::ZakharovProblem(std::size_t dimension, double lower_bound, double upper_bound) {
+ZakharovProblem::ZakharovProblem(std::size_t dimension, double lower_bound, double upper_bound)
+    : BenchmarkProblemBase(
+          make_metadata("zakharov", "benchmark", "Zakharov function (unimodal, plate-shaped)"),
+          dimension,
+          std::vector<double>(dimension, lower_bound),
+          std::vector<double>(dimension, upper_bound)) {
     validate_dimension(dimension, "zakharov");
     validate_bounds(lower_bound, upper_bound, "zakharov");
-    metadata_.id = "zakharov";
-    metadata_.family = "benchmark";
-    metadata_.description = "Zakharov function (unimodal, plate-shaped)";
-    dimension_ = dimension;
-    lower_bounds_.assign(dimension_, lower_bound);
-    upper_bounds_.assign(dimension_, upper_bound);
 }
 
 double ZakharovProblem::evaluate(const std::vector<double> &decision_vector) const {
@@ -212,15 +216,14 @@ double ZakharovProblem::evaluate(const std::vector<double> &decision_vector) con
     return sum1 + sum2 * sum2 + std::pow(sum2, 4);
 }
 
-StyblinskiTangProblem::StyblinskiTangProblem(std::size_t dimension, double lower_bound, double upper_bound) {
+StyblinskiTangProblem::StyblinskiTangProblem(std::size_t dimension, double lower_bound, double upper_bound)
+    : BenchmarkProblemBase(
+          make_metadata("styblinski_tang", "benchmark", "Styblinski-Tang function (multimodal)"),
+          dimension,
+          std::vector<double>(dimension, lower_bound),
+          std::vector<double>(dimension, upper_bound)) {
     validate_dimension(dimension, "styblinski_tang");
     validate_bounds(lower_bound, upper_bound, "styblinski_tang");
-    metadata_.id = "styblinski_tang";
-    metadata_.family = "benchmark";
-    metadata_.description = "Styblinski-Tang function (multimodal)";
-    dimension_ = dimension;
-    lower_bounds_.assign(dimension_, lower_bound);
-    upper_bounds_.assign(dimension_, upper_bound);
 }
 
 double StyblinskiTangProblem::evaluate(const std::vector<double> &decision_vector) const {
@@ -238,7 +241,16 @@ double StyblinskiTangProblem::evaluate(const std::vector<double> &decision_vecto
     return sum;
 }
 
-KnapsackProblem::KnapsackProblem(const std::vector<double> &values, const std::vector<double> &weights, double capacity) {
+KnapsackProblem::KnapsackProblem(const std::vector<double> &values, const std::vector<double> &weights, double capacity)
+    : BenchmarkProblemBase(
+          make_metadata("knapsack", "combinatorial", "0-1 knapsack problem (continuous encoding)"),
+          values.size(),
+          std::vector<double>(values.size(), 0.0),
+          std::vector<double>(values.size(), 1.0)),
+      values_(values),
+      weights_(weights),
+      capacity_(capacity),
+      total_value_(std::accumulate(values_.begin(), values_.end(), 0.0)) {
     if (values.size() != weights.size()) {
         throw std::runtime_error("values and weights vectors must have same size");
     }
@@ -248,17 +260,6 @@ KnapsackProblem::KnapsackProblem(const std::vector<double> &values, const std::v
     if (capacity <= 0.0) {
         throw std::runtime_error("knapsack capacity must be positive");
     }
-    
-    metadata_.id = "knapsack";
-    metadata_.family = "combinatorial";
-    metadata_.description = "0-1 knapsack problem (continuous encoding)";
-    dimension_ = values.size();
-    values_ = values;
-    weights_ = weights;
-    capacity_ = capacity;
-    total_value_ = std::accumulate(values_.begin(), values_.end(), 0.0);
-    lower_bounds_.assign(dimension_, 0.0);
-    upper_bounds_.assign(dimension_, 1.0);
 }
 
 double KnapsackProblem::evaluate(const std::vector<double> &decision_vector) const {
@@ -286,6 +287,149 @@ double KnapsackProblem::evaluate(const std::vector<double> &decision_vector) con
     }
 
     return -total_value;
+}
+
+namespace {
+
+const config::ConfigValue *find_config_value(const config::ProblemParameterSet &parameters,
+                                             const std::string &name) {
+    auto it = parameters.find(name);
+    return it == parameters.end() ? nullptr : &it->second;
+}
+
+std::optional<std::int64_t> read_config_int(const config::ProblemParameterSet &parameters,
+                                            const std::string &name) {
+    const auto *value = find_config_value(parameters, name);
+    if (!value) {
+        return std::nullopt;
+    }
+    if (const auto *integer = std::get_if<std::int64_t>(value)) {
+        return *integer;
+    }
+    throw std::invalid_argument("problem parameter '" + name + "' must be an integer");
+}
+
+std::optional<double> read_config_number(const config::ProblemParameterSet &parameters,
+                                         const std::string &name) {
+    const auto *value = find_config_value(parameters, name);
+    if (!value) {
+        return std::nullopt;
+    }
+    if (const auto *floating = std::get_if<double>(value)) {
+        return *floating;
+    }
+    if (const auto *integer = std::get_if<std::int64_t>(value)) {
+        return static_cast<double>(*integer);
+    }
+    throw std::invalid_argument("problem parameter '" + name + "' must be numeric");
+}
+
+std::vector<double> read_config_number_vector(const config::ProblemParameterSet &parameters,
+                                              const std::string &name) {
+    const auto *value = find_config_value(parameters, name);
+    if (!value) {
+        return {};
+    }
+    if (const auto *doubles = std::get_if<std::vector<double>>(value)) {
+        return *doubles;
+    }
+    if (const auto *ints = std::get_if<std::vector<std::int64_t>>(value)) {
+        return std::vector<double>(ints->begin(), ints->end());
+    }
+    throw std::invalid_argument("problem parameter '" + name + "' must be a numeric array");
+}
+
+void reject_unknown_keys(const std::string &problem_type,
+                         const config::ProblemParameterSet &parameters,
+                         const std::vector<std::string> &allowed) {
+    for (const auto &[key, value] : parameters) {
+        (void)value;
+        bool recognized = false;
+        for (const auto &name : allowed) {
+            if (key == name) {
+                recognized = true;
+                break;
+            }
+        }
+        if (!recognized) {
+            throw std::invalid_argument(
+                "unknown problem parameter '" + key + "' for problem type '" + problem_type + "'");
+        }
+    }
+}
+
+// omit bounds to keep each problem's canonical default domain
+// pass both to override it
+template <typename Problem>
+std::unique_ptr<core::IProblem> make_box_problem(
+    std::size_t dimension, const std::optional<double> &lower, const std::optional<double> &upper) {
+    if (lower.has_value()) {
+        return std::make_unique<Problem>(dimension, *lower, *upper);
+    }
+    return std::make_unique<Problem>(dimension);
+}
+
+} // namespace
+
+std::unique_ptr<core::IProblem> make_benchmark_problem(
+    const std::string &problem_type,
+    const config::ProblemParameterSet &parameters) {
+
+    static const std::vector<std::string> box_keys = {"dimension", "lower_bound", "upper_bound"};
+
+    if (problem_type == "knapsack") {
+        reject_unknown_keys(problem_type, parameters, {"values", "weights", "capacity"});
+        auto values = read_config_number_vector(parameters, "values");
+        auto weights = read_config_number_vector(parameters, "weights");
+        if (values.empty()) {
+            throw std::invalid_argument("knapsack problem parameter 'values' is required");
+        }
+        if (weights.empty()) {
+            throw std::invalid_argument("knapsack problem parameter 'weights' is required");
+        }
+        const auto capacity = read_config_number(parameters, "capacity");
+        if (!capacity.has_value()) {
+            throw std::invalid_argument("knapsack problem parameter 'capacity' is required");
+        }
+        return std::make_unique<KnapsackProblem>(values, weights, *capacity);
+    }
+
+    const bool is_box = problem_type == "sphere" || problem_type == "rosenbrock" ||
+                        problem_type == "rastrigin" || problem_type == "ackley" ||
+                        problem_type == "griewank" || problem_type == "schwefel" ||
+                        problem_type == "zakharov" || problem_type == "styblinski_tang";
+    if (!is_box) {
+        throw std::invalid_argument("unknown problem type '" + problem_type + "'");
+    }
+
+    reject_unknown_keys(problem_type, parameters, box_keys);
+
+    const auto dimension = read_config_int(parameters, "dimension");
+    if (!dimension.has_value()) {
+        throw std::invalid_argument(
+            "problem parameter 'dimension' is required for problem type '" + problem_type + "'");
+    }
+    if (*dimension < 1) {
+        throw std::invalid_argument(
+            "problem parameter 'dimension' must be at least 1 for problem type '" + problem_type + "'");
+    }
+    const auto lb = read_config_number(parameters, "lower_bound");
+    const auto ub = read_config_number(parameters, "upper_bound");
+    if (lb.has_value() != ub.has_value()) {
+        // one bound alone would silently pair with the other's canonical default
+        throw std::invalid_argument(
+            "problem parameters 'lower_bound' and 'upper_bound' must be provided together");
+    }
+    const auto dim = static_cast<std::size_t>(*dimension);
+
+    if (problem_type == "sphere") return make_box_problem<SphereProblem>(dim, lb, ub);
+    if (problem_type == "rosenbrock") return make_box_problem<RosenbrockProblem>(dim, lb, ub);
+    if (problem_type == "rastrigin") return make_box_problem<RastriginProblem>(dim, lb, ub);
+    if (problem_type == "ackley") return make_box_problem<AckleyProblem>(dim, lb, ub);
+    if (problem_type == "griewank") return make_box_problem<GriewankProblem>(dim, lb, ub);
+    if (problem_type == "schwefel") return make_box_problem<SchwefelProblem>(dim, lb, ub);
+    if (problem_type == "zakharov") return make_box_problem<ZakharovProblem>(dim, lb, ub);
+    return make_box_problem<StyblinskiTangProblem>(dim, lb, ub);
 }
 
 } // namespace hpoea::wrappers::problems

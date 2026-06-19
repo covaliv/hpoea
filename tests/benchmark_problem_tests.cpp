@@ -4,7 +4,11 @@
 #include "hpoea/wrappers/problems/benchmark_problems.hpp"
 
 #include <cmath>
+#include <cstdint>
+#include <functional>
 #include <limits>
+#include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -168,42 +172,132 @@ int main() {
                            name + " bounds match expected defaults");
         };
 
-        SphereProblem sphere(3);
-        check_bounds(sphere, "Sphere", -5.0, 5.0);
-
-        RosenbrockProblem rosenbrock(3);
-        check_bounds(rosenbrock, "Rosenbrock", -5.0, 10.0);
-
-        RastriginProblem rastrigin(3);
-        check_bounds(rastrigin, "Rastrigin", -5.12, 5.12);
-
-        AckleyProblem ackley(3);
-        check_bounds(ackley, "Ackley", -32.768, 32.768);
-
-        GriewankProblem griewank(3);
-        check_bounds(griewank, "Griewank", -600.0, 600.0);
-
-        SchwefelProblem schwefel(3);
-        check_bounds(schwefel, "Schwefel", -500.0, 500.0);
-
-        ZakharovProblem zakharov(3);
-        check_bounds(zakharov, "Zakharov", -5.0, 10.0);
-
-        StyblinskiTangProblem styblinskitang(3);
-        check_bounds(styblinskitang, "StyblinskiTang", -5.0, 5.0);
+        struct BoundsCase {
+            std::function<std::unique_ptr<hpoea::core::IProblem>()> make;
+            const char *name;
+            double lower;
+            double upper;
+        };
+        const std::vector<BoundsCase> bounds_cases = {
+            {[] { return std::make_unique<SphereProblem>(3); }, "Sphere", -5.0, 5.0},
+            {[] { return std::make_unique<RosenbrockProblem>(3); }, "Rosenbrock", -5.0, 10.0},
+            {[] { return std::make_unique<RastriginProblem>(3); }, "Rastrigin", -5.12, 5.12},
+            {[] { return std::make_unique<AckleyProblem>(3); }, "Ackley", -32.768, 32.768},
+            {[] { return std::make_unique<GriewankProblem>(3); }, "Griewank", -600.0, 600.0},
+            {[] { return std::make_unique<SchwefelProblem>(3); }, "Schwefel", -500.0, 500.0},
+            {[] { return std::make_unique<ZakharovProblem>(3); }, "Zakharov", -5.0, 10.0},
+            {[] { return std::make_unique<StyblinskiTangProblem>(3); }, "StyblinskiTang", -5.0, 5.0},
+        };
+        for (const auto &c : bounds_cases) {
+            const auto problem = c.make();
+            check_bounds(*problem, c.name, c.lower, c.upper);
+        }
     }
 
 
     {
-        SphereProblem s1(1);
-        SphereProblem s5(5);
-        SphereProblem s10(10);
-        HPOEA_V2_CHECK(runner, s1.dimension() == 1, "Sphere dim=1");
-        HPOEA_V2_CHECK(runner, s5.dimension() == 5, "Sphere dim=5");
-        HPOEA_V2_CHECK(runner, s10.dimension() == 10, "Sphere dim=10");
-        HPOEA_V2_CHECK(runner, s1.lower_bounds().size() == 1, "Sphere dim=1 bounds");
-        HPOEA_V2_CHECK(runner, s10.lower_bounds().size() == 10, "Sphere dim=10 bounds");
+        hpoea::config::ProblemParameterSet params;
+        params.emplace("dimension", std::int64_t{3});
+        params.emplace("lower_bond", -10.0);
+        bool threw = false;
+        std::string message;
+        try {
+            auto problem = hpoea::wrappers::problems::make_benchmark_problem("sphere", params);
+            (void)problem;
+        } catch (const std::exception &ex) {
+            threw = true;
+            message = ex.what();
+        }
+        HPOEA_V2_CHECK(runner, threw, "make_benchmark_problem rejects misspelled parameter key");
+        HPOEA_V2_CHECK(runner, message.find("lower_bond") != std::string::npos,
+                       "error message names the offending misspelled key");
     }
+
+
+    {
+        hpoea::config::ProblemParameterSet params;
+        params.emplace("dimension", std::int64_t{4});
+        params.emplace("lower_bound", -3.0);
+        params.emplace("upper_bound", 3.0);
+        auto problem = hpoea::wrappers::problems::make_benchmark_problem("sphere", params);
+        HPOEA_V2_CHECK(runner, problem->dimension() == 4, "make_benchmark_problem builds sphere dim=4");
+        HPOEA_V2_CHECK(runner, problem->metadata().id == "sphere",
+                       "make_benchmark_problem sets correct metadata id");
+        HPOEA_V2_CHECK(runner, hpoea::tests_v2::nearly_equal(problem->lower_bounds()[0], -3.0, 1e-12),
+                       "make_benchmark_problem honors explicit lower_bound");
+    }
+
+
+    {
+        hpoea::config::ProblemParameterSet params;
+        params.emplace("values", std::vector<double>{10.0, 7.0});
+        params.emplace("weights", std::vector<double>{5.0, 3.0});
+        params.emplace("capcity", 6.0);
+        bool threw = false;
+        std::string message;
+        try {
+            auto problem = hpoea::wrappers::problems::make_benchmark_problem("knapsack", params);
+            (void)problem;
+        } catch (const std::exception &ex) {
+            threw = true;
+            message = ex.what();
+        }
+        HPOEA_V2_CHECK(runner, threw, "make_benchmark_problem rejects misspelled knapsack key");
+        HPOEA_V2_CHECK(runner, message.find("capcity") != std::string::npos,
+                       "knapsack error message names the offending misspelled key");
+    }
+
+
+    {
+        // bounds omitted keeps each problem's canonical domain
+        // never a uniform [-5, 5] fallback
+        struct DefaultsCase { const char *type; double lower; double upper; };
+        const std::vector<DefaultsCase> cases = {
+            {"schwefel", -500.0, 500.0},
+            {"ackley", -32.768, 32.768},
+            {"griewank", -600.0, 600.0},
+        };
+        for (const auto &c : cases) {
+            hpoea::config::ProblemParameterSet params;
+            params.emplace("dimension", std::int64_t{2});
+            auto problem = hpoea::wrappers::problems::make_benchmark_problem(c.type, params);
+            const auto lb = problem->lower_bounds();
+            const auto ub = problem->upper_bounds();
+            bool ok = lb.size() == 2 && ub.size() == 2;
+            for (std::size_t i = 0; i < lb.size() && i < ub.size(); ++i) {
+                if (!hpoea::tests_v2::nearly_equal(lb[i], c.lower, 1e-12) ||
+                    !hpoea::tests_v2::nearly_equal(ub[i], c.upper, 1e-12)) {
+                    ok = false;
+                }
+            }
+            HPOEA_V2_CHECK(runner, ok,
+                           std::string("make_benchmark_problem ") + c.type +
+                               " without bounds keeps its canonical default domain");
+        }
+    }
+
+
+    {
+        // exactly one of lower_bound/upper_bound must fail loudly
+        // not pair with a default
+        hpoea::config::ProblemParameterSet params;
+        params.emplace("dimension", std::int64_t{2});
+        params.emplace("lower_bound", -3.0);
+        bool threw = false;
+        std::string message;
+        try {
+            auto problem = hpoea::wrappers::problems::make_benchmark_problem("sphere", params);
+            (void)problem;
+        } catch (const std::invalid_argument &ex) {
+            threw = true;
+            message = ex.what();
+        }
+        HPOEA_V2_CHECK(runner, threw,
+                       "make_benchmark_problem rejects lower_bound without upper_bound");
+        HPOEA_V2_CHECK(runner, message.find("provided together") != std::string::npos,
+                       "make_benchmark_problem error states bounds must be provided together");
+    }
+
 
     return runner.summarize("benchmark_problem_tests");
 }
