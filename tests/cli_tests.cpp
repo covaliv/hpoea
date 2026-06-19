@@ -1,24 +1,14 @@
 #include "test_harness.hpp"
+#include "cli_util.hpp"
 
-#include <array>
-#include <cerrno>
-#include <cstdio>
-#include <cstdlib>
 #include <filesystem>
-#include <fstream>
-#include <sstream>
+#include <initializer_list>
 #include <string>
-#include <sys/wait.h>
-#include <unistd.h>
-#include <vector>
+#include <string_view>
+
+using namespace hpoea::tests_v2;
 
 namespace {
-
-struct CommandResult {
-    int exit_code{0};
-    std::string stdout_text;
-    std::string stderr_text;
-};
 
 std::filesystem::path project_path(std::initializer_list<std::string_view> parts) {
     std::filesystem::path path{HPOEA_PROJECT_SOURCE_DIR};
@@ -26,69 +16,6 @@ std::filesystem::path project_path(std::initializer_list<std::string_view> parts
         path /= part;
     }
     return path;
-}
-
-std::filesystem::path unique_test_dir(const std::string &name) {
-    return std::filesystem::temp_directory_path()
-        / (name + "_" + std::to_string(::getpid()));
-}
-
-std::string shell_quote(const std::string &value) {
-    std::string quoted = "'";
-    for (const auto ch : value) {
-        if (ch == '\'') {
-            quoted += "'\\''";
-        } else {
-            quoted += ch;
-        }
-    }
-    quoted += "'";
-    return quoted;
-}
-
-std::string read_file(const std::filesystem::path &path) {
-    std::ifstream stream{path};
-    std::ostringstream buffer;
-    buffer << stream.rdbuf();
-    return buffer.str();
-}
-
-void write_file(const std::filesystem::path &path,
-                const std::string &text) {
-    std::ofstream stream{path};
-    stream << text;
-}
-
-CommandResult run_cli(const std::vector<std::string> &args,
-                      const std::filesystem::path &work_dir) {
-    static int command_index = 0;
-    std::filesystem::create_directories(work_dir);
-    const auto stdout_path = work_dir / ("stdout_" + std::to_string(command_index) + ".txt");
-    const auto stderr_path = work_dir / ("stderr_" + std::to_string(command_index) + ".txt");
-    ++command_index;
-
-    std::string command = shell_quote(CLI_EXECUTABLE);
-    for (const auto &arg : args) {
-        command += ' ';
-        command += shell_quote(arg);
-    }
-    command += " > ";
-    command += shell_quote(stdout_path.string());
-    command += " 2> ";
-    command += shell_quote(stderr_path.string());
-
-    const int raw_status = std::system(command.c_str());
-    CommandResult result;
-    if (raw_status == -1) {
-        result.exit_code = errno == 0 ? 1 : errno;
-    } else if (WIFEXITED(raw_status)) {
-        result.exit_code = WEXITSTATUS(raw_status);
-    } else {
-        result.exit_code = 1;
-    }
-    result.stdout_text = read_file(stdout_path);
-    result.stderr_text = read_file(stderr_path);
-    return result;
 }
 
 std::string read_basic_example_with_output_dir(const std::filesystem::path &output_dir) {
@@ -172,11 +99,6 @@ function_evaluations = 2
 )";
 }
 
-bool contains(const std::string &text,
-              const std::string &needle) {
-    return text.find(needle) != std::string::npos;
-}
-
 } // namespace
 
 int main() {
@@ -186,28 +108,24 @@ int main() {
     std::filesystem::create_directories(work_dir);
 
     {
-        const auto result = run_cli({"--help"}, work_dir);
-        HPOEA_V2_CHECK(runner, result.exit_code == 0, "help exits successfully");
-        HPOEA_V2_CHECK(runner, contains(result.stdout_text, "usage: hpoea"),
+        // basic CLI checks
+        // help/version succeed with content
+        // unknown command fails loud
+        const auto help = run_cli({"--help"}, work_dir);
+        HPOEA_V2_CHECK(runner, help.exit_code == 0, "help exits successfully");
+        HPOEA_V2_CHECK(runner, contains(help.stdout_text, "usage: hpoea"),
                        "help prints usage");
-        HPOEA_V2_CHECK(runner, result.stderr_text.empty(), "help does not print stderr");
-    }
 
-    {
-        const auto result = run_cli({"--version"}, work_dir);
-        HPOEA_V2_CHECK(runner, result.exit_code == 0, "version exits successfully");
-        HPOEA_V2_CHECK(runner, contains(result.stdout_text, std::string{"hpoea "} + HPOEA_PROJECT_VERSION),
+        const auto version = run_cli({"--version"}, work_dir);
+        HPOEA_V2_CHECK(runner, version.exit_code == 0, "version exits successfully");
+        HPOEA_V2_CHECK(runner, contains(version.stdout_text, std::string{"hpoea "} + HPOEA_PROJECT_VERSION),
                        "version prints project version");
-        HPOEA_V2_CHECK(runner, result.stderr_text.empty(), "version does not print stderr");
-    }
 
-    {
-        const auto result = run_cli({"__hpoea_unknown_command__"}, work_dir);
-        HPOEA_V2_CHECK(runner, result.exit_code != 0, "unknown command exits nonzero");
-        HPOEA_V2_CHECK(runner, result.stdout_text.empty(), "unknown command does not print stdout");
-        HPOEA_V2_CHECK(runner, contains(result.stderr_text, "unknown command"),
+        const auto unknown = run_cli({"__hpoea_unknown_command__"}, work_dir);
+        HPOEA_V2_CHECK(runner, unknown.exit_code != 0, "unknown command exits nonzero");
+        HPOEA_V2_CHECK(runner, contains(unknown.stderr_text, "unknown command"),
                        "unknown command reports diagnostic");
-        HPOEA_V2_CHECK(runner, contains(result.stderr_text, "--help"),
+        HPOEA_V2_CHECK(runner, contains(unknown.stderr_text, "--help"),
                        "unknown command includes help hint");
     }
 

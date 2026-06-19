@@ -1,6 +1,9 @@
 #include "hpoea/config/config_validator.hpp"
 
 #include "hpoea/config/suite_expander.hpp"
+#include "hpoea/config/supported_types.hpp"
+
+#include "path_helpers.hpp"
 
 #include <array>
 #include <cstddef>
@@ -23,65 +26,16 @@ using hpoea::config::SuiteConfig;
 using hpoea::config::ValidationDiagnostic;
 using hpoea::config::ValidationDiagnosticSeverity;
 using hpoea::config::ValidationResult;
-
-template <std::size_t Size>
-bool contains(const std::array<std::string_view, Size> &ids,
-              std::string_view type_id) noexcept {
-    for (const auto id : ids) {
-        if (id == type_id) {
-            return true;
-        }
-    }
-    return false;
-}
-
-constexpr std::array<std::string_view, 6> pagmo_algorithm_type_ids{
-    "de",
-    "pso",
-    "sade",
-    "sga",
-    "de1220",
-    "cmaes"
-};
+using hpoea::config::build_has_pagmo;
+using hpoea::config::contains;
+using hpoea::config::pagmo_algorithm_type_ids;
+using hpoea::config::pagmo_optimizer_type_ids;
+using hpoea::config::detail::join_index;
+using hpoea::config::detail::join_path;
 
 constexpr std::array<std::string_view, 1> core_optimizer_type_ids{
     "random_search"
 };
-
-constexpr std::array<std::string_view, 4> pagmo_optimizer_type_ids{
-    "cmaes",
-    "pso",
-    "simulated_annealing",
-    "nelder_mead"
-};
-
-constexpr bool build_has_pagmo() noexcept {
-#if defined(HPOEA_CONFIG_HAS_PAGMO)
-    return true;
-#else
-    return false;
-#endif
-}
-
-std::string join_path(std::string_view base,
-                      std::string_view key) {
-    if (base.empty()) {
-        return std::string{key};
-    }
-    std::string path{base};
-    path += '.';
-    path += key;
-    return path;
-}
-
-std::string join_index(std::string_view base,
-                       std::size_t index) {
-    std::string path{base};
-    path += '[';
-    path += std::to_string(index);
-    path += ']';
-    return path;
-}
 
 class Validator {
 public:

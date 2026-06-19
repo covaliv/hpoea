@@ -50,10 +50,10 @@ struct BudgetConfig {
     std::optional<std::size_t> function_evaluations;
 };
 
-// Type identifiers are open strings so projects can define custom adapters.
-// Validation rejects empty identifiers and known Pagmo-backed identifiers when
-// Pagmo support is disabled, but it does not require custom identifiers to be
-// registered in this module.
+// type ids are open strings so projects can define custom adapters
+// validation rejects empty ids
+// and known pagmo ids when pagmo is off
+// custom ids don't need registering here
 struct ProblemSpec {
     std::string id;
     std::string type;

@@ -117,24 +117,12 @@ int main() {
         HPOEA_V2_CHECK(runner, cfg.algorithms.front().type == "de", "algorithm type parses");
         HPOEA_V2_CHECK(runner, cfg.optimizers.front().id == "cmaes_fast", "optimizer id parses");
         HPOEA_V2_CHECK(runner, cfg.optimizers.front().type == "cmaes", "optimizer type parses");
-    }
 
-    {
-        const auto result = hpoea::config::parse_config_file(example_path("basic_experiment.toml"));
-        HPOEA_V2_CHECK(runner, result.ok(), "basic example config parses");
-    }
-
-    {
-        const auto result = hpoea::config::parse_config_string(basic_config(), "values.toml");
-        HPOEA_V2_CHECK(runner, result.ok() && result.config.has_value(), "basic config is available for value checks");
-        if (!result.ok() || !result.config.has_value()) {
-            return runner.summarize("config_parser_tests");
-        }
-        const auto &problem_params = result.config->problems.front().parameters;
-        const auto &fixed = result.config->algorithms.front().fixed_parameters;
-        const auto &search = result.config->algorithms.front().search_parameters;
-        const auto &optimizer_params = result.config->optimizers.front().parameters;
-        const auto &experiment = result.config->experiments.front();
+        const auto &problem_params = cfg.problems.front().parameters;
+        const auto &fixed = cfg.algorithms.front().fixed_parameters;
+        const auto &search = cfg.algorithms.front().search_parameters;
+        const auto &optimizer_params = cfg.optimizers.front().parameters;
+        const auto &experiment = cfg.experiments.front();
 
         HPOEA_V2_CHECK(runner, std::get<std::int64_t>(problem_params.at("dimension")) == 10,
                        "problem integer parameter value parses");
@@ -184,6 +172,11 @@ int main() {
                        "algorithm budget generation value parses");
         HPOEA_V2_CHECK(runner, experiment.optimizer_budget->function_evaluations == std::optional<std::size_t>{800},
                        "optimizer budget function evaluation value parses");
+    }
+
+    {
+        const auto result = hpoea::config::parse_config_file(example_path("basic_experiment.toml"));
+        HPOEA_V2_CHECK(runner, result.ok(), "basic example config parses");
     }
 
     {

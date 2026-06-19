@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace hpoea::cli {
@@ -49,5 +50,11 @@ struct DispatchResult {
 
 [[nodiscard]] DispatchResult make_dispatch_objects(const config::SuiteConfig &config,
                                                    const config::ResolvedRunSpec &run);
+
+[[nodiscard]] const config::AlgorithmSpec *find_algorithm(const config::SuiteConfig &config,
+                                                          std::string_view id) noexcept;
+
+[[nodiscard]] const config::OptimizerSpec *find_optimizer(const config::SuiteConfig &config,
+                                                          std::string_view id) noexcept;
 
 } // namespace hpoea::cli

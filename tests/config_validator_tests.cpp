@@ -105,59 +105,6 @@ int main() {
     }
 
     {
-        auto cfg = make_valid_suite();
-        cfg.schema_version = 2;
-        const auto result = hpoea::config::validate_suite_config(cfg);
-        HPOEA_V2_CHECK(runner, !result.ok(), "unsupported schema versions fail");
-        HPOEA_V2_CHECK(runner, has_error(result, "schema_version",
-                                         "unsupported config schema version: 2"),
-                       "unsupported schema version diagnostic is exact");
-    }
-
-    {
-        auto cfg = make_valid_suite();
-        cfg.name.clear();
-        const auto result = hpoea::config::validate_suite_config(cfg);
-        HPOEA_V2_CHECK(runner, has_error(result, "suite.name", "suite name must not be empty"),
-                       "empty suite name diagnostic is exact");
-    }
-
-    {
-        auto cfg = make_valid_suite();
-        cfg.output_dir.clear();
-        const auto result = hpoea::config::validate_suite_config(cfg);
-        HPOEA_V2_CHECK(runner, has_error(result, "suite.output_dir", "suite output_dir must not be empty"),
-                       "empty output_dir diagnostic is exact");
-    }
-
-    {
-        auto cfg = make_valid_suite();
-        cfg.repetitions = 0;
-        const auto result = hpoea::config::validate_suite_config(cfg);
-        HPOEA_V2_CHECK(runner, has_error(result, "suite.repetitions",
-                                         "suite repetitions must be at least 1"),
-                       "invalid suite repetitions diagnostic is exact");
-    }
-
-    {
-        auto cfg = make_valid_suite();
-        cfg.experiments.front().repetitions = 0;
-        const auto result = hpoea::config::validate_suite_config(cfg);
-        HPOEA_V2_CHECK(runner, has_error(result, "experiments[0].repetitions",
-                                         "experiment repetitions must be at least 1"),
-                       "invalid experiment repetitions diagnostic is exact");
-    }
-
-    {
-        auto cfg = make_valid_suite();
-        cfg.experiments.front().optimizer_budget = hpoea::config::BudgetConfig{std::nullopt, 0};
-        const auto result = hpoea::config::validate_suite_config(cfg);
-        HPOEA_V2_CHECK(runner, has_error(result, "experiments[0].optimizer_budget.function_evaluations",
-                                         "budget function_evaluations must be greater than zero"),
-                       "invalid optimizer budget diagnostic is exact");
-    }
-
-    {
         struct Case {
             const char *path;
             const char *diagnostic;
@@ -192,6 +139,91 @@ int main() {
             {"experiments[0].optimizer", "experiment 'sphere_ea': unknown optimizer 'missing_optimizer'",
              "unknown optimizer refs fail", [](SuiteConfig &cfg) {
                  cfg.experiments.front().optimizer = "missing_optimizer";
+             }},
+            {"schema_version", "unsupported config schema version: 2",
+             "unsupported schema version diagnostic is exact", [](SuiteConfig &cfg) {
+                 cfg.schema_version = 2;
+             }},
+            {"suite.name", "suite name must not be empty",
+             "empty suite name diagnostic is exact", [](SuiteConfig &cfg) {
+                 cfg.name.clear();
+             }},
+            {"suite.output_dir", "suite output_dir must not be empty",
+             "empty output_dir diagnostic is exact", [](SuiteConfig &cfg) {
+                 cfg.output_dir.clear();
+             }},
+            {"suite.repetitions", "suite repetitions must be at least 1",
+             "invalid suite repetitions diagnostic is exact", [](SuiteConfig &cfg) {
+                 cfg.repetitions = 0;
+             }},
+            {"experiments[0].repetitions", "experiment repetitions must be at least 1",
+             "invalid experiment repetitions diagnostic is exact", [](SuiteConfig &cfg) {
+                 cfg.experiments.front().repetitions = 0;
+             }},
+            {"experiments[0].optimizer_budget.function_evaluations",
+             "budget function_evaluations must be greater than zero",
+             "invalid optimizer budget diagnostic is exact", [](SuiteConfig &cfg) {
+                 cfg.experiments.front().optimizer_budget = hpoea::config::BudgetConfig{std::nullopt, 0};
+             }},
+            {"algorithms.ea_default.search.scaling_factor", "range min must be less than max",
+             "range min/max diagnostic is exact", [](SuiteConfig &cfg) {
+                 SearchParameterSpec spec;
+                 spec.mode = SearchParameterMode::Range;
+                 spec.continuous_range = hpoea::core::ContinuousRange{0.9, 0.4};
+                 cfg.algorithms.front().search_parameters.emplace("scaling_factor", spec);
+             }},
+            {"algorithms.ea_default.search.scaling_factor", "range mode requires both min and max",
+             "range missing bounds diagnostic is exact", [](SuiteConfig &cfg) {
+                 SearchParameterSpec spec;
+                 spec.mode = SearchParameterMode::Range;
+                 cfg.algorithms.front().search_parameters.emplace("scaling_factor", spec);
+             }},
+            {"algorithms.ea_default.search.population_size", "integer_range min must be less than max",
+             "integer_range min/max diagnostic is exact", [](SuiteConfig &cfg) {
+                 SearchParameterSpec spec;
+                 spec.mode = SearchParameterMode::IntegerRange;
+                 spec.integer_range = hpoea::core::IntegerRange{10, 5};
+                 cfg.algorithms.front().search_parameters.emplace("population_size", spec);
+             }},
+            {"algorithms.ea_default.search.variant.values", "choice mode requires at least one value",
+             "empty choice values diagnostic is exact", [](SuiteConfig &cfg) {
+                 SearchParameterSpec spec;
+                 spec.mode = SearchParameterMode::Choice;
+                 cfg.algorithms.front().search_parameters.emplace("variant", spec);
+             }},
+            {"algorithms.ea_default.search.ftol", "exclude mode must not define min or max bounds",
+             "exclude bounds diagnostic is exact", [](SuiteConfig &cfg) {
+                 SearchParameterSpec spec;
+                 spec.mode = SearchParameterMode::Exclude;
+                 spec.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
+                 cfg.algorithms.front().search_parameters.emplace("ftol", spec);
+             }},
+            {"algorithms.ea_default.search.scaling_factor.values",
+             "values are only supported for choice search parameters",
+             "values-on-range diagnostic is exact", [](SuiteConfig &cfg) {
+                 SearchParameterSpec spec;
+                 spec.mode = SearchParameterMode::Range;
+                 spec.continuous_range = hpoea::core::ContinuousRange{0.1, 0.9};
+                 spec.choices.push_back(0.5);
+                 cfg.algorithms.front().search_parameters.emplace("scaling_factor", spec);
+             }},
+            {"algorithms.ea_default.search.scaling_factor",
+             "parameter appears in both fixed and search parameter sets",
+             "fixed/search conflict diagnostic is exact", [](SuiteConfig &cfg) {
+                 cfg.algorithms.front().fixed_parameters.emplace("scaling_factor", 0.5);
+                 SearchParameterSpec spec;
+                 spec.mode = SearchParameterMode::Range;
+                 spec.continuous_range = hpoea::core::ContinuousRange{0.1, 0.9};
+                 cfg.algorithms.front().search_parameters.emplace("scaling_factor", spec);
+             }},
+            {"experiments[1].output_name",
+             "duplicate final output name 'shared_output' also produced by experiments[0].output_name",
+             "duplicate output name diagnostic is exact", [](SuiteConfig &cfg) {
+                 cfg.experiments.front().output_name = "shared_output";
+                 auto second = cfg.experiments.front();
+                 second.id = "sphere_ea_2";
+                 second.output_name = "shared_output";
+                 cfg.experiments.push_back(second);
              }}
         };
 
@@ -201,29 +233,6 @@ int main() {
             const auto result = hpoea::config::validate_suite_config(cfg);
             HPOEA_V2_CHECK(runner, has_error(result, test_case.path, test_case.diagnostic), test_case.message);
         }
-    }
-
-    {
-        auto cfg = make_valid_suite();
-        SearchParameterSpec spec;
-        spec.mode = SearchParameterMode::Range;
-        spec.continuous_range = hpoea::core::ContinuousRange{0.9, 0.4};
-        cfg.algorithms.front().search_parameters.emplace("scaling_factor", spec);
-        const auto result = hpoea::config::validate_suite_config(cfg);
-        HPOEA_V2_CHECK(runner, has_error(result, "algorithms.ea_default.search.scaling_factor",
-                                         "range min must be less than max"),
-                       "range min/max diagnostic is exact");
-    }
-
-    {
-        auto cfg = make_valid_suite();
-        SearchParameterSpec spec;
-        spec.mode = SearchParameterMode::Range;
-        cfg.algorithms.front().search_parameters.emplace("scaling_factor", spec);
-        const auto result = hpoea::config::validate_suite_config(cfg);
-        HPOEA_V2_CHECK(runner, has_error(result, "algorithms.ea_default.search.scaling_factor",
-                                         "range mode requires both min and max"),
-                       "range missing bounds diagnostic is exact");
     }
 
     {
@@ -262,124 +271,6 @@ int main() {
         HPOEA_V2_CHECK(runner, has_error(result, "algorithms.ea_default.search.scaling_factor",
                                          "range mode requires both min and max"),
                        "partial range bounds diagnostic is exact");
-    }
-
-    {
-        auto cfg = make_valid_suite();
-        SearchParameterSpec spec;
-        spec.mode = SearchParameterMode::IntegerRange;
-        spec.integer_range = hpoea::core::IntegerRange{10, 5};
-        cfg.algorithms.front().search_parameters.emplace("population_size", spec);
-        const auto result = hpoea::config::validate_suite_config(cfg);
-        HPOEA_V2_CHECK(runner, has_error(result, "algorithms.ea_default.search.population_size",
-                                         "integer_range min must be less than max"),
-                       "integer_range min/max diagnostic is exact");
-    }
-
-    {
-        auto cfg = make_valid_suite();
-        SearchParameterSpec spec;
-        spec.mode = SearchParameterMode::Choice;
-        cfg.algorithms.front().search_parameters.emplace("variant", spec);
-        const auto result = hpoea::config::validate_suite_config(cfg);
-        HPOEA_V2_CHECK(runner, has_error(result, "algorithms.ea_default.search.variant.values",
-                                         "choice mode requires at least one value"),
-                       "empty choice values diagnostic is exact");
-    }
-
-    {
-        auto cfg = make_valid_suite();
-        SearchParameterSpec spec;
-        spec.mode = SearchParameterMode::Exclude;
-        spec.continuous_range = hpoea::core::ContinuousRange{0.0, 1.0};
-        cfg.algorithms.front().search_parameters.emplace("ftol", spec);
-        const auto result = hpoea::config::validate_suite_config(cfg);
-        HPOEA_V2_CHECK(runner, has_error(result, "algorithms.ea_default.search.ftol",
-                                         "exclude mode must not define min or max bounds"),
-                       "exclude bounds diagnostic is exact");
-    }
-
-
-    {
-        auto cfg = make_valid_suite();
-        SearchParameterSpec spec;
-        spec.mode = SearchParameterMode::Range;
-        spec.continuous_range = hpoea::core::ContinuousRange{0.1, 0.9};
-        spec.choices.push_back(0.5);
-        cfg.algorithms.front().search_parameters.emplace("scaling_factor", spec);
-        const auto result = hpoea::config::validate_suite_config(cfg);
-        HPOEA_V2_CHECK(runner, has_error(result, "algorithms.ea_default.search.scaling_factor.values",
-                                         "values are only supported for choice search parameters"),
-                       "values-on-range diagnostic is exact");
-    }
-
-    {
-        auto cfg = make_valid_suite();
-        cfg.algorithms.front().fixed_parameters.emplace("scaling_factor", 0.5);
-        SearchParameterSpec spec;
-        spec.mode = SearchParameterMode::Range;
-        spec.continuous_range = hpoea::core::ContinuousRange{0.1, 0.9};
-        cfg.algorithms.front().search_parameters.emplace("scaling_factor", spec);
-        const auto result = hpoea::config::validate_suite_config(cfg);
-        HPOEA_V2_CHECK(runner, has_error(result, "algorithms.ea_default.search.scaling_factor",
-                                         "parameter appears in both fixed and search parameter sets"),
-                       "fixed/search conflict diagnostic is exact");
-    }
-
-    {
-        auto cfg = make_valid_suite();
-        cfg.experiments.front().output_name = "../escape";
-        const auto result = hpoea::config::validate_suite_config(cfg);
-        HPOEA_V2_CHECK(runner, has_error(result, "experiments[0].output_name",
-                                         "output_name must not contain path separators"),
-                       "unsafe output name diagnostic is exact");
-    }
-
-    {
-        auto cfg = make_valid_suite();
-        cfg.experiments.front().id = "bad name";
-        const auto result = hpoea::config::validate_suite_config(cfg);
-        HPOEA_V2_CHECK(runner, has_error(result, "experiments[0].id",
-                                         "experiment id must use only letters, digits, '_', '-', or '.'"),
-                       "unsafe implicit output name diagnostic is exact");
-    }
-
-    {
-        auto cfg = make_valid_suite();
-        cfg.experiments.front().output_name = "shared_output";
-        auto second = cfg.experiments.front();
-        second.id = "sphere_ea_2";
-        second.output_name = "shared_output";
-        cfg.experiments.push_back(second);
-        const auto result = hpoea::config::validate_suite_config(cfg);
-        HPOEA_V2_CHECK(runner, has_error(result, "experiments[1].output_name",
-                                         "duplicate final output name 'shared_output' also produced by experiments[0].output_name"),
-                       "duplicate output name diagnostic is exact");
-    }
-
-    {
-        auto cfg = make_valid_suite();
-        cfg.repetitions = 1;
-        cfg.experiments.front().id = "alpha beta";
-        cfg.experiments.front().output_name = "alpha_one";
-        auto second = cfg.experiments.front();
-        second.id = "alpha_beta";
-        second.output_name = "alpha_two";
-        cfg.experiments.push_back(second);
-        const auto result = hpoea::config::validate_suite_config(cfg);
-        HPOEA_V2_CHECK(runner, has_error(result, "resolved_runs[1].run_id",
-                                         "duplicate run_id 'alpha_beta__rep000' also produced by resolved_runs[0].run_id"),
-                       "duplicate generated run id diagnostic is exact");
-    }
-
-    {
-        auto cfg = make_valid_suite();
-        cfg.experiments.front().repetitions = 3;
-        cfg.experiments.front().seed = std::numeric_limits<std::uint64_t>::max() - 1;
-        const auto result = hpoea::config::validate_suite_config(cfg);
-        HPOEA_V2_CHECK(runner, has_error(result, "experiments[0].seed",
-                                         "explicit seed overflows when applying repetition index 2"),
-                       "explicit seed overflow diagnostic is exact");
     }
 
 #if !defined(HPOEA_CONFIG_HAS_PAGMO)

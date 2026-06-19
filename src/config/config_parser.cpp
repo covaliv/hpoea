@@ -4,6 +4,8 @@
 #define TOML_ENABLE_FORMATTERS 0
 #include <toml++/toml.hpp>
 
+#include "path_helpers.hpp"
+
 #include <cstdint>
 #include <exception>
 #include <initializer_list>
@@ -30,26 +32,8 @@ using hpoea::config::SearchChoiceList;
 using hpoea::config::SearchParameterMode;
 using hpoea::config::SearchParameterSpec;
 using hpoea::config::SuiteConfig;
-
-std::string join_path(std::string_view base,
-                      std::string_view key) {
-    if (base.empty()) {
-        return std::string{key};
-    }
-    std::string path{base};
-    path += '.';
-    path += key;
-    return path;
-}
-
-std::string index_path(std::string_view base,
-                       std::size_t index) {
-    std::string path{base};
-    path += '[';
-    path += std::to_string(index);
-    path += ']';
-    return path;
-}
+using hpoea::config::detail::join_index;
+using hpoea::config::detail::join_path;
 
 std::string node_type_name(const toml::node &node) {
     switch (node.type()) {
@@ -244,7 +228,7 @@ private:
 
         for (std::size_t i = 0; i < array.size(); ++i) {
             const auto *node = array.get(i);
-            const auto element_path = index_path(path, i);
+            const auto element_path = join_index(path, i);
             if (!node) {
                 error(element_path, "mixed-type arrays are not supported");
                 return std::nullopt;
@@ -333,7 +317,7 @@ private:
             if (!node) {
                 continue;
             }
-            const auto value = parse_scalar_value(*node, index_path(path, i));
+            const auto value = parse_scalar_value(*node, join_index(path, i));
             if (!value) {
                 return std::nullopt;
             }
@@ -544,7 +528,7 @@ private:
         }
         for (std::size_t i = 0; i < experiments->size(); ++i) {
             const auto *node = experiments->get(i);
-            const auto path = index_path("experiments", i);
+            const auto path = join_index("experiments", i);
             const auto *table = node ? node->as_table() : nullptr;
             if (!table) {
                 error(path, "expected table, got " + (node ? node_type_name(*node) : std::string{"unknown"}));

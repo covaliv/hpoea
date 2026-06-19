@@ -1,5 +1,6 @@
 #include "hpoea/config/suite_expander.hpp"
 
+#include "path_helpers.hpp"
 
 #include <cctype>
 #include <cstdint>
@@ -22,26 +23,8 @@ using hpoea::config::ExpansionResult;
 using hpoea::config::ExperimentSpec;
 using hpoea::config::ResolvedRunSpec;
 using hpoea::config::SuiteConfig;
-
-std::string join_path(std::string_view base,
-                      std::string_view key) {
-    if (base.empty()) {
-        return std::string{key};
-    }
-    std::string path{base};
-    path += '.';
-    path += key;
-    return path;
-}
-
-std::string join_index(std::string_view base,
-                       std::size_t index) {
-    std::string path{base};
-    path += '[';
-    path += std::to_string(index);
-    path += ']';
-    return path;
-}
+using hpoea::config::detail::join_index;
+using hpoea::config::detail::join_path;
 
 std::string format_repetition_index(std::size_t value) {
     std::ostringstream stream;

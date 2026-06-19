@@ -121,26 +121,6 @@ bool has_blocking_plan_diagnostics(const hpoea::config::ValidationResult &result
     return false;
 }
 
-const hpoea::config::AlgorithmSpec *find_algorithm(const hpoea::config::SuiteConfig &config,
-                                                   std::string_view id) {
-    for (const auto &algorithm : config.algorithms) {
-        if (algorithm.id == id) {
-            return &algorithm;
-        }
-    }
-    return nullptr;
-}
-
-const hpoea::config::OptimizerSpec *find_optimizer(const hpoea::config::SuiteConfig &config,
-                                                   std::string_view id) {
-    for (const auto &optimizer : config.optimizers) {
-        if (optimizer.id == id) {
-            return &optimizer;
-        }
-    }
-    return nullptr;
-}
-
 void print_component_line(std::ostream &out,
                           std::string_view label,
                           const hpoea::cli::ComponentDispatch &annotation) {
@@ -234,8 +214,8 @@ int run_plan(const std::filesystem::path &path) {
 std::optional<hpoea::core::ExperimentConfig> make_experiment_config(
     const hpoea::config::SuiteConfig &suite,
     const hpoea::config::ResolvedRunSpec &run) {
-    const auto *algorithm = find_algorithm(suite, run.algorithm_id);
-    const auto *optimizer = find_optimizer(suite, run.optimizer_id);
+    const auto *algorithm = hpoea::cli::find_algorithm(suite, run.algorithm_id);
+    const auto *optimizer = hpoea::cli::find_optimizer(suite, run.optimizer_id);
     if (!algorithm) {
         std::cerr << "error: run " << run.run_id << ": missing algorithm id: "
                   << run.algorithm_id << '\n';

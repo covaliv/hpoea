@@ -1,5 +1,6 @@
 #include "dispatch.hpp"
 
+#include "hpoea/config/supported_types.hpp"
 #include "hpoea/core/random_search_optimizer.hpp"
 #include "hpoea/core/search_space.hpp"
 #include "hpoea/wrappers/problems/benchmark_problems.hpp"
@@ -32,66 +33,16 @@ using hpoea::config::SearchParameterMode;
 using hpoea::config::SearchParameterSpec;
 using hpoea::config::SuiteConfig;
 
-constexpr bool build_has_pagmo() noexcept {
-#if defined(HPOEA_CONFIG_HAS_PAGMO)
-    return true;
-#else
-    return false;
-#endif
-}
-
-constexpr std::array<std::string_view, 6> pagmo_algorithm_type_ids{
-    "de",
-    "pso",
-    "sade",
-    "sga",
-    "de1220",
-    "cmaes"
-};
-
-constexpr std::array<std::string_view, 4> pagmo_optimizer_type_ids{
-    "cmaes",
-    "pso",
-    "simulated_annealing",
-    "nelder_mead"
-};
-
-template <std::size_t Size>
-bool contains(const std::array<std::string_view, Size> &ids,
-              std::string_view type_id) noexcept {
-    for (const auto id : ids) {
-        if (id == type_id) {
-            return true;
-        }
-    }
-    return false;
-}
+using hpoea::config::build_has_pagmo;
+using hpoea::config::contains;
+using hpoea::config::pagmo_algorithm_type_ids;
+using hpoea::config::pagmo_optimizer_type_ids;
 
 const ProblemSpec *find_problem(const SuiteConfig &config,
                                 std::string_view id) {
     for (const auto &problem : config.problems) {
         if (problem.id == id) {
             return &problem;
-        }
-    }
-    return nullptr;
-}
-
-const AlgorithmSpec *find_algorithm(const SuiteConfig &config,
-                                    std::string_view id) {
-    for (const auto &algorithm : config.algorithms) {
-        if (algorithm.id == id) {
-            return &algorithm;
-        }
-    }
-    return nullptr;
-}
-
-const OptimizerSpec *find_optimizer(const SuiteConfig &config,
-                                    std::string_view id) {
-    for (const auto &optimizer : config.optimizers) {
-        if (optimizer.id == id) {
-            return &optimizer;
         }
     }
     return nullptr;
@@ -270,7 +221,6 @@ std::shared_ptr<hpoea::core::SearchSpace> make_algorithm_search_space(
 
     auto search = std::make_shared<hpoea::core::SearchSpace>();
     for (const auto &[name, spec] : algorithm.search_parameters) {
-        // search-space entries constrain what the hyper-optimizer may tune.
         switch (spec.mode) {
         case SearchParameterMode::Range:
             if (!spec.continuous_range.has_value()) {
@@ -339,6 +289,26 @@ std::unique_ptr<hpoea::core::IHyperparameterOptimizer> make_optimizer(
 } // namespace
 
 namespace hpoea::cli {
+
+const config::AlgorithmSpec *find_algorithm(const config::SuiteConfig &config,
+                                            std::string_view id) noexcept {
+    for (const auto &algorithm : config.algorithms) {
+        if (algorithm.id == id) {
+            return &algorithm;
+        }
+    }
+    return nullptr;
+}
+
+const config::OptimizerSpec *find_optimizer(const config::SuiteConfig &config,
+                                            std::string_view id) noexcept {
+    for (const auto &optimizer : config.optimizers) {
+        if (optimizer.id == id) {
+            return &optimizer;
+        }
+    }
+    return nullptr;
+}
 
 RunDispatch annotate_run_dispatch(const SuiteConfig &config,
                                   const ResolvedRunSpec &run) {
