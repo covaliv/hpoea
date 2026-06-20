@@ -140,10 +140,11 @@ int main() {
         HPOEA_V2_CHECK(runner, result.runs[0].repetition_index == 0
                                   && result.runs[2].repetition_index == 2,
                        "repetition indexes are copied to runs");
-        HPOEA_V2_CHECK(runner, result.runs[0].seed == 9001ULL, "explicit seed is used for repetition zero");
-        HPOEA_V2_CHECK(runner, result.runs[1].seed == 9002ULL
-                                  && result.runs[2].seed == 9003ULL,
-                       "explicit seed increments by repetition");
+        HPOEA_V2_CHECK(runner, result.runs[0].seed == 10827774489952801545ULL,
+                       "explicit seed derives repetition-zero seed via FNV-1a");
+        HPOEA_V2_CHECK(runner, result.runs[1].seed == 10828900389859900384ULL
+                                  && result.runs[2].seed == 10830026289766999223ULL,
+                       "explicit seed derives distinct per-repetition seeds via FNV-1a");
         HPOEA_V2_CHECK(runner, result.runs[0].output_name == "sphere_ea",
                        "default output name is copied to runs");
         HPOEA_V2_CHECK(runner, result.runs[0].algorithm_budget.generations == std::optional<std::size_t>{25},
@@ -215,10 +216,12 @@ int main() {
         cfg.experiments.front().repetitions = 3;
         cfg.experiments.front().seed = std::numeric_limits<std::uint64_t>::max() - 1;
         const auto result = hpoea::config::expand_suite_config(cfg);
-        HPOEA_V2_CHECK(runner, has_error(result, "experiments[0].seed",
-                                         "explicit seed overflows when applying repetition index 2"),
-                       "explicit seed overflow fails expansion with exact diagnostic");
-        HPOEA_V2_CHECK(runner, result.runs.empty(), "seed overflow clears candidate runs");
+        HPOEA_V2_CHECK(runner, result.ok() && result.runs.size() == 3,
+                       "near-max explicit seed no longer overflows and expands all repetitions");
+        HPOEA_V2_CHECK(runner, result.runs[0].seed != result.runs[1].seed
+                                  && result.runs[1].seed != result.runs[2].seed
+                                  && result.runs[0].seed != result.runs[2].seed,
+                       "hashed explicit-seed repetitions are distinct");
     }
 
     {
@@ -262,7 +265,7 @@ int main() {
         HPOEA_V2_CHECK(runner, result.runs.size() == 3,
                        "basic example expands one experiment over three repetitions");
         HPOEA_V2_CHECK(runner, result.runs[0].run_id == "sphere_de_cmaes__rep000"
-                                  && result.runs[2].seed == 9003ULL,
+                                  && result.runs[2].seed == 10830026289766999223ULL,
                        "basic example run ids and explicit seeds are stable");
         HPOEA_V2_CHECK(runner, result.runs[0].algorithm_budget.generations == std::optional<std::size_t>{25}
                                   && result.runs[0].optimizer_budget.generations == std::optional<std::size_t>{8}

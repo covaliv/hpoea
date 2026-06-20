@@ -6,7 +6,6 @@
 #include <cstdint>
 #include <filesystem>
 #include <iomanip>
-#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -72,19 +71,23 @@ std::uint64_t derive_hashed_seed(const SuiteConfig &cfg,
     return state;
 }
 
-std::optional<std::uint64_t> derive_seed(const SuiteConfig &cfg,
-                                         const ExperimentSpec &exp,
-                                         std::size_t repetition_index) {
+std::uint64_t derive_explicit_seed(std::uint64_t seed,
+                                   std::size_t repetition_index) {
+    std::uint64_t state = 14695981039346656037ULL;
+    state = fnv1a_append(state, "explicit_seed");
+    state = fnv1a_append(state, std::to_string(seed));
+    state = fnv1a_append(state, "repetition_index");
+    state = fnv1a_append(state, std::to_string(repetition_index));
+    return state;
+}
+
+std::uint64_t derive_seed(const SuiteConfig &cfg,
+                          const ExperimentSpec &exp,
+                          std::size_t repetition_index) {
     if (!exp.seed.has_value()) {
         return derive_hashed_seed(cfg, exp, repetition_index);
     }
-
-    const auto offset = static_cast<std::uint64_t>(repetition_index);
-    if (static_cast<std::size_t>(offset) != repetition_index
-        || *exp.seed > std::numeric_limits<std::uint64_t>::max() - offset) {
-        return std::nullopt;
-    }
-    return *exp.seed + offset;
+    return derive_explicit_seed(*exp.seed, repetition_index);
 }
 
 BudgetConfig budget_or_empty(const std::optional<BudgetConfig> &budget) {
@@ -235,21 +238,13 @@ private:
         const auto optimizer_budget = budget_or_empty(exp.optimizer_budget);
 
         for (std::size_t repetition_index = 0; repetition_index < repetitions; ++repetition_index) {
-            const auto seed = derive_seed(config_, exp, repetition_index);
-            if (!seed.has_value()) {
-                add_error(join_path(base_path, "seed"),
-                          "explicit seed overflows when applying repetition index "
-                              + std::to_string(repetition_index));
-                break;
-            }
-
             ResolvedRunSpec run;
             run.experiment_id = exp.id;
             run.problem_id = exp.problem;
             run.algorithm_id = exp.algorithm;
             run.optimizer_id = exp.optimizer;
             run.repetition_index = repetition_index;
-            run.seed = *seed;
+            run.seed = derive_seed(config_, exp, repetition_index);
             run.output_name = *output_name;
             run.run_id = *normalized_id + "__rep" + format_repetition_index(repetition_index);
             run.planned_output_path = make_output_path(config_.output_dir, run.output_name, repetition_index);
