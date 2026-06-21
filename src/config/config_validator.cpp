@@ -14,12 +14,9 @@
 
 namespace {
 
-using hpoea::config::AlgorithmSpec;
 using hpoea::config::BudgetConfig;
 using hpoea::config::ExperimentSpec;
 using hpoea::config::ExpansionDiagnosticSeverity;
-using hpoea::config::OptimizerSpec;
-using hpoea::config::ProblemSpec;
 using hpoea::config::SearchParameterMode;
 using hpoea::config::SearchParameterSpec;
 using hpoea::config::SuiteConfig;
@@ -67,6 +64,11 @@ private:
         add_diagnostic(ValidationDiagnosticSeverity::Error, std::move(path), std::move(message));
     }
 
+    void add_warning(std::string path,
+                     std::string message) {
+        add_diagnostic(ValidationDiagnosticSeverity::Warning, std::move(path), std::move(message));
+    }
+
     void validate_suite() {
         if (config_.schema_version != 1) {
             add_error("schema_version", "unsupported config schema version: " + std::to_string(config_.schema_version));
@@ -92,10 +94,11 @@ private:
                 add_error(join_path(join_index("problems", i), "id"), "problem id must not be empty");
                 continue;
             }
-            const auto [it, inserted] = problems_by_id_.emplace(problem.id, &problem);
+            const auto [it, inserted] =
+                problems_by_id_.emplace(problem.id, join_path(join_index("problems", i), "id"));
             if (!inserted) {
                 add_error(join_path("problems", problem.id),
-                          "duplicate problem id '" + problem.id + "' also produced by " + it->first);
+                          "duplicate problem id '" + problem.id + "' also produced by " + it->second);
             }
         }
     }
@@ -107,10 +110,11 @@ private:
                 add_error(join_path(join_index("algorithms", i), "id"), "algorithm id must not be empty");
                 continue;
             }
-            const auto [it, inserted] = algorithms_by_id_.emplace(algorithm.id, &algorithm);
+            const auto [it, inserted] =
+                algorithms_by_id_.emplace(algorithm.id, join_path(join_index("algorithms", i), "id"));
             if (!inserted) {
                 add_error(join_path("algorithms", algorithm.id),
-                          "duplicate algorithm id '" + algorithm.id + "' also produced by " + it->first);
+                          "duplicate algorithm id '" + algorithm.id + "' also produced by " + it->second);
             }
         }
     }
@@ -122,10 +126,11 @@ private:
                 add_error(join_path(join_index("optimizers", i), "id"), "optimizer id must not be empty");
                 continue;
             }
-            const auto [it, inserted] = optimizers_by_id_.emplace(optimizer.id, &optimizer);
+            const auto [it, inserted] =
+                optimizers_by_id_.emplace(optimizer.id, join_path(join_index("optimizers", i), "id"));
             if (!inserted) {
                 add_error(join_path("optimizers", optimizer.id),
-                          "duplicate optimizer id '" + optimizer.id + "' also produced by " + it->first);
+                          "duplicate optimizer id '" + optimizer.id + "' also produced by " + it->second);
             }
         }
     }
@@ -210,7 +215,14 @@ private:
             validate_budget(*experiment.algorithm_budget, join_path(base_path, "algorithm_budget"));
         }
         if (experiment.optimizer_budget.has_value()) {
-            validate_budget(*experiment.optimizer_budget, join_path(base_path, "optimizer_budget"));
+            const auto optimizer_budget_path = join_path(base_path, "optimizer_budget");
+            validate_budget(*experiment.optimizer_budget, optimizer_budget_path);
+            if (experiment.optimizer_budget->generations.has_value() &&
+                !experiment.optimizer_budget->function_evaluations.has_value()) {
+                add_warning(join_path(optimizer_budget_path, "generations"),
+                            "optimizer_budget.generations is optimizer-specific and not comparable across optimizer "
+                            "types; prefer function_evaluations for cross-optimizer comparisons");
+            }
         }
         if (!problems_by_id_.contains(experiment.problem)) {
             add_error(join_path(base_path, "problem"),
@@ -340,9 +352,9 @@ private:
 
     const SuiteConfig &config_;
     ValidationResult result_;
-    std::unordered_map<std::string, const ProblemSpec *> problems_by_id_;
-    std::unordered_map<std::string, const AlgorithmSpec *> algorithms_by_id_;
-    std::unordered_map<std::string, const OptimizerSpec *> optimizers_by_id_;
+    std::unordered_map<std::string, std::string> problems_by_id_;
+    std::unordered_map<std::string, std::string> algorithms_by_id_;
+    std::unordered_map<std::string, std::string> optimizers_by_id_;
 };
 
 } // namespace

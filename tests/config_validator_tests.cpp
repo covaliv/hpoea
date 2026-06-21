@@ -40,6 +40,18 @@ bool has_error(const ValidationResult &result,
     return false;
 }
 
+bool has_warning(const ValidationResult &result,
+                 const std::string &path,
+                 const std::string &message) {
+    for (const auto &diag : result.diagnostics) {
+        if (diag.path == path && diag.message.find(message) != std::string::npos
+            && diag.severity == hpoea::config::ValidationDiagnosticSeverity::Warning) {
+            return true;
+        }
+    }
+    return false;
+}
+
 SuiteConfig make_valid_suite() {
     SuiteConfig cfg;
     cfg.schema_version = 1;
@@ -105,6 +117,17 @@ int main() {
     }
 
     {
+        auto cfg = make_valid_suite();
+        cfg.experiments.front().optimizer_budget = hpoea::config::BudgetConfig{7, std::nullopt};
+        const auto result = hpoea::config::validate_suite_config(cfg);
+        HPOEA_V2_CHECK(runner, result.ok(),
+                       "generations-only optimizer budget is a warning, not an error");
+        HPOEA_V2_CHECK(runner, has_warning(result, "experiments[0].optimizer_budget.generations",
+                                           "not comparable across optimizer types"),
+                       "generations-only optimizer budget warns about comparability");
+    }
+
+    {
         struct Case {
             const char *path;
             const char *diagnostic;
@@ -112,15 +135,15 @@ int main() {
             void (*mutate)(SuiteConfig &);
         };
         const std::vector<Case> cases{
-            {"problems.sphere10", "duplicate problem id 'sphere10' also produced by sphere10",
+            {"problems.sphere10", "duplicate problem id 'sphere10' also produced by problems[0].id",
              "duplicate problem ids fail", [](SuiteConfig &cfg) {
                  cfg.problems.push_back(cfg.problems.front());
              }},
-            {"algorithms.ea_default", "duplicate algorithm id 'ea_default' also produced by ea_default",
+            {"algorithms.ea_default", "duplicate algorithm id 'ea_default' also produced by algorithms[0].id",
              "duplicate algorithm ids fail", [](SuiteConfig &cfg) {
                  cfg.algorithms.push_back(cfg.algorithms.front());
              }},
-            {"optimizers.optimizer_fast", "duplicate optimizer id 'optimizer_fast' also produced by optimizer_fast",
+            {"optimizers.optimizer_fast", "duplicate optimizer id 'optimizer_fast' also produced by optimizers[0].id",
              "duplicate optimizer ids fail", [](SuiteConfig &cfg) {
                  cfg.optimizers.push_back(cfg.optimizers.front());
              }},
