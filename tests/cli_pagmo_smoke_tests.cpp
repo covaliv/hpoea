@@ -137,6 +137,14 @@ int main() {
     HPOEA_V2_CHECK(runner, contains(log_text, "\"population_size\":5"),
                    "Pagmo CLI run logs fixed DE parameter");
 
+    const auto rerun_result = run_cli({"run", config_path.string()}, work_dir);
+    HPOEA_V2_CHECK(runner, rerun_result.exit_code == 0, "Pagmo CLI rerun exits successfully");
+    const auto rerun_text = read_file(log_path);
+    HPOEA_V2_CHECK(runner,
+                   std::count(rerun_text.begin(), rerun_text.end(), '\n') ==
+                       std::count(log_text.begin(), log_text.end(), '\n'),
+                   "rerunning a config replaces the JSONL records instead of appending");
+
     const auto random_output_dir = work_dir / "random-out";
     const auto random_config_path = work_dir / "tiny_random_run.toml";
     write_file(random_config_path, tiny_random_search_config(random_output_dir));

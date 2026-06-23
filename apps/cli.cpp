@@ -272,8 +272,9 @@ int run_config(const std::filesystem::path &path) {
         return 1;
     }
 
+    // suite was already expanded and reported above
+    // only fetch run plans here
     const auto expansion = hpoea::config::expand_suite_config(*config);
-    print_expansion_diagnostics(expansion);
     if (!expansion.ok()) {
         return 1;
     }
@@ -305,6 +306,10 @@ int run_config(const std::filesystem::path &path) {
             }
 
             create_parent_directory(experiment_config->log_file_path);
+            // logger appends so a rerun must clear old records first
+            if (std::filesystem::exists(experiment_config->log_file_path)) {
+                std::filesystem::remove(experiment_config->log_file_path);
+            }
             hpoea::core::JsonlLogger logger{experiment_config->log_file_path};
             hpoea::core::SequentialExperimentManager manager;
             const auto result = manager.run_experiment(

@@ -170,6 +170,17 @@ std::unique_ptr<hpoea::core::IProblem> make_problem(const ProblemSpec &problem,
         return nullptr;
     }
 
+    constexpr std::array<std::string_view, 3> sphere_parameter_keys{"dimension", "lower_bound", "upper_bound"};
+    const auto errors_before = errors.size();
+    for (const auto &[key, value] : problem.parameters) {
+        if (!contains(sphere_parameter_keys, key)) {
+            errors.push_back("problems." + problem.id + "." + key + " is not a recognized sphere parameter");
+        }
+    }
+    if (errors.size() != errors_before) {
+        return nullptr;
+    }
+
     const auto dimension = read_integer_parameter(
         problem.parameters, "dimension", "problems." + problem.id + ".dimension", errors);
     const auto lower_bound = read_optional_number_parameter(
@@ -253,13 +264,24 @@ std::shared_ptr<hpoea::core::SearchSpace> make_algorithm_search_space(
 std::unique_ptr<hpoea::core::IHyperparameterOptimizer> make_optimizer(
     const OptimizerSpec &optimizer,
     const AlgorithmSpec &algorithm,
-    const hpoea::core::IEvolutionaryAlgorithmFactory &algorithm_factory,
+    const hpoea::core::IEvolutionaryAlgorithmFactory *algorithm_factory,
     std::vector<std::string> &errors) {
-    if (optimizer.type == "random_search") {
-        auto random_search = std::make_unique<hpoea::core::RandomSearchOptimizer>();
+    // make_optimizer is the only place that reports an unsupported optimizer
+    auto build_search = [&algorithm, &algorithm_factory, &errors]()
+        -> std::shared_ptr<hpoea::core::SearchSpace> {
+        if (!algorithm_factory) {
+            return nullptr;
+        }
         auto search = make_algorithm_search_space(algorithm, errors);
         if (search) {
-            search->validate(algorithm_factory.parameter_space());
+            search->validate(algorithm_factory->parameter_space());
+        }
+        return search;
+    };
+
+    if (optimizer.type == "random_search") {
+        auto random_search = std::make_unique<hpoea::core::RandomSearchOptimizer>();
+        if (auto search = build_search()) {
             random_search->set_search_space(std::move(search));
         }
         return random_search;
@@ -272,15 +294,11 @@ std::unique_ptr<hpoea::core::IHyperparameterOptimizer> make_optimizer(
 
 #if defined(HPOEA_CONFIG_HAS_PAGMO)
     auto cmaes = std::make_unique<hpoea::pagmo_wrappers::PagmoCmaesHyperOptimizer>();
-    auto search = make_algorithm_search_space(algorithm, errors);
-    if (search) {
-        search->validate(algorithm_factory.parameter_space());
+    if (auto search = build_search()) {
         cmaes->set_search_space(std::move(search));
     }
     return cmaes;
 #else
-    (void)algorithm;
-    (void)algorithm_factory;
     errors.push_back("optimizer type requires a Pagmo-enabled build: cmaes");
     return nullptr;
 #endif
@@ -345,14 +363,10 @@ DispatchResult make_dispatch_objects(const SuiteConfig &config,
     try {
         result.objects.problem = make_problem(*problem, result.errors);
         result.objects.algorithm_factory = make_algorithm_factory(*algorithm, result.errors);
-        if (result.objects.algorithm_factory) {
-            result.objects.optimizer = make_optimizer(
-                *optimizer, *algorithm, *result.objects.algorithm_factory, result.errors);
-        } else if (optimizer->type != "random_search" && optimizer->type != "cmaes") {
-            add_unsupported_error(result.errors, "optimizer", optimizer->type);
-        } else if (optimizer->type == "cmaes" && !build_has_pagmo()) {
-            result.errors.push_back("optimizer type requires a Pagmo-enabled build: cmaes");
-        }
+        // make_optimizer tolerates a null factory
+        // so the optimizer error still surfaces
+        result.objects.optimizer = make_optimizer(
+            *optimizer, *algorithm, result.objects.algorithm_factory.get(), result.errors);
     } catch (const std::exception &exception) {
         result.errors.push_back(exception.what());
     }
