@@ -3,6 +3,7 @@
 #include "hpoea/core/types.hpp"
 #include "hpoea/wrappers/pagmo/de_algorithm.hpp"
 #include "hpoea/wrappers/problems/benchmark_problems.hpp"
+#include "test_util.hpp"
 
 #include <iostream>
 #include <iomanip>
@@ -72,11 +73,7 @@ int main() {
             test_configs.push_back(config);
             
             std::cout << "config_" << (i + 1) << ": ";
-            for (const auto &[name, value] : config) {
-                std::cout << name << "=";
-                std::visit([](auto v) { std::cout << v; }, value);
-                std::cout << " ";
-            }
+            apps::print_parameters_inline(std::cout, config);
             std::cout << "\n";
         } catch (const core::ParameterValidationError &e) {
             std::cerr << "config_" << (i + 1) << ": validation_error: " << e.what() << "\n";

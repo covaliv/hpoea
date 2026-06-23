@@ -7,7 +7,7 @@
 #include <iostream>
 #include <iomanip>
 
-// custom problem: shifted sphere function
+// custom problem, shifted sphere function
 class ShiftedSphereProblem final : public hpoea::core::IProblem {
 public:
     explicit ShiftedSphereProblem(std::size_t dimension, const std::vector<double> &shift)

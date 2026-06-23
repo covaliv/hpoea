@@ -2,6 +2,7 @@
 #include "hpoea/wrappers/pagmo/cmaes_hyper.hpp"
 #include "hpoea/wrappers/problems/benchmark_problems.hpp"
 #include "hpoea/core/types.hpp"
+#include "test_util.hpp"
 
 #include <iostream>
 #include <iomanip>
@@ -32,11 +33,7 @@ int main() {
         std::cout << "best_objective: " << result.best_objective << "\n";
         std::cout << "trials: " << result.trials.size() << "\n";
         
-        for (const auto &[name, value] : result.best_parameters) {
-            std::cout << name << ": ";
-            std::visit([](auto v) { std::cout << v; }, value);
-            std::cout << "\n";
-        }
+        apps::print_parameters(std::cout, result.best_parameters);
         
         std::cout << "function_evaluations: " << result.optimizer_usage.objective_calls << "\n";
         std::cout << "wall_time_ms: " << result.optimizer_usage.wall_time.count() << "\n";

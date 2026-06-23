@@ -65,7 +65,7 @@ int main() {
         ok ? ++passed : ++failed;
     }
     
-    std::cout << "\nde vs pso on griewank:\n"; // quick comparison
+    std::cout << "\nde vs pso on griewank:\n";
     {
         wrappers::problems::GriewankProblem problem(5, -600.0, 600.0);
         

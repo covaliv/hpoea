@@ -3,6 +3,7 @@
 #include "hpoea/wrappers/pagmo/cmaes_hyper.hpp"
 #include "hpoea/wrappers/pagmo/de_algorithm.hpp"
 #include "hpoea/wrappers/problems/benchmark_problems.hpp"
+#include "test_util.hpp"
 
 #include <iomanip>
 #include <iostream>
@@ -14,26 +15,21 @@ int main() {
   wrappers::problems::RosenbrockProblem problem(8);
   pagmo_wrappers::PagmoDifferentialEvolutionFactory ea_factory;
 
-  // create search space to customize hyperparameter optimization
   auto search = std::make_shared<core::SearchSpace>();
 
-  // set population_size to a fixed value
   search->fix("population_size", std::int64_t{100});
 
-  // optimize scaling_factor with narrower bounds [0.3, 0.9]
   search->optimize("scaling_factor", core::ContinuousRange{0.3, 0.9});
 
-  // optimize crossover_rate with narrower bounds [0.7, 1.0]
   search->optimize("crossover_rate", core::ContinuousRange{0.7, 1.0});
 
-  // only try specific variant values
   search->optimize_choices("variant",
                            {std::int64_t{1}, std::int64_t{2}, std::int64_t{5}});
 
-  // exclude ftol from optimization (use algorithm default)
+  // exclude ftol
+  // algorithm uses its default
   search->exclude("ftol");
 
-  // configure optimizer
   pagmo_wrappers::PagmoCmaesHyperOptimizer optimizer;
   optimizer.set_search_space(search);
 
@@ -58,11 +54,7 @@ int main() {
     std::cout << "trials completed: " << result.trials.size() << "\n";
 
     std::cout << "\nbest parameters:\n";
-    for (const auto &[name, value] : result.best_parameters) {
-      std::cout << "  " << name << ": ";
-      std::visit([](auto v) { std::cout << v; }, value);
-      std::cout << "\n";
-    }
+    apps::print_parameters(std::cout, result.best_parameters, "  ");
 
     std::cout << "\noptimizer usage:\n";
     std::cout << "  objective_calls: "

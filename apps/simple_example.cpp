@@ -4,6 +4,7 @@
 #include "hpoea/wrappers/pagmo/cmaes_hyper.hpp"
 #include "hpoea/wrappers/problems/benchmark_problems.hpp"
 #include "hpoea/core/types.hpp"
+#include "test_util.hpp"
 
 #include <iostream>
 #include <iomanip>
@@ -16,7 +17,6 @@ int main() {
     std::cout << std::fixed << std::setprecision(6);
     std::cout << "hpoea framework examples\n\n";
     
-    // basic DE on sphere
     std::cout << "1. sphere (5d) with de\n";
     {
         wrappers::problems::SphereProblem problem(5);
@@ -46,7 +46,6 @@ int main() {
         std::cout << "   evals: " << r.algorithm_usage.function_evaluations << "\n\n";
     }
     
-    // see which algo does best
     std::cout << "2. algorithm comparison on sphere (10d)\n";
     {
         wrappers::problems::SphereProblem problem(10);
@@ -93,7 +92,6 @@ int main() {
         }
     }
     
-    // let cmaes find good DE params
     std::cout << "3. cma-es tuning de hyperparameters\n";
     {
         wrappers::problems::SphereProblem problem(5);
@@ -117,15 +115,10 @@ int main() {
         std::cout << "   objective: " << r.best_objective << "\n";
         std::cout << "   trials: " << r.trials.size() << "\n";
         std::cout << "   params: ";
-        for (const auto &[k, v] : r.best_parameters) {
-            std::cout << k << "=";
-            std::visit([](auto x) { std::cout << x; }, v);
-            std::cout << " ";
-        }
+        apps::print_parameters_inline(std::cout, r.best_parameters);
         std::cout << "\n\n";
     }
     
-    // try a few different test functions
     std::cout << "4. de on multiple benchmarks\n";
     {
         struct Problem {

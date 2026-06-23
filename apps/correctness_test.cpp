@@ -12,7 +12,7 @@
 
 using namespace hpoea;
 
-struct TestResult { // keeps track of pass/fail
+struct TestResult {
     int passed = 0;
     int failed = 0;
     
@@ -25,7 +25,7 @@ struct TestResult { // keeps track of pass/fail
 };
 
 
-core::OptimizationResult run_de(int dim, int pop, int gens, unsigned long seed) { // helper
+core::OptimizationResult run_de(int dim, int pop, int gens, unsigned long seed) {
     wrappers::problems::SphereProblem problem(dim);
     pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
     auto algo = factory.create();
