@@ -14,7 +14,7 @@ The core library builds without Pagmo2. `HPOEA_WITH_PAGMO=ON` adds Pagmo2 algori
 
 - Public interfaces for problems, evolutionary algorithms, and hyperparameter optimizers.
 - Parameter spaces and search-space restrictions.
-- Sequential and parallel experiment managers.
+- Sequential and parallel experiment managers; the parallel manager runs independent trials on a std::thread worker pool (no pagmo islands).
 - Budget, seed, status, and error result types.
 - JSON Lines logging for experiment records.
 - Config parsing and validation support.
@@ -62,10 +62,15 @@ The build uses `tomlplusplus`. If CMake cannot find an installed package, it fet
 
 ## Quick start
 
+Measurement and benchmark runs must use a `Release` build; debug builds report
+wall-time artifacts, not real performance. The top-level CMakeLists defaults
+`CMAKE_BUILD_TYPE` to `Release` when it is unset, but pass it explicitly for
+reproducibility, and override it with `-DCMAKE_BUILD_TYPE=Debug` for debugging.
+
 Core library build and test:
 
 ```bash
-cmake -S . -B build/hpoea-core -DHPOEA_BUILD_TESTS=ON
+cmake -S . -B build/hpoea-core -DCMAKE_BUILD_TYPE=Release -DHPOEA_BUILD_TESTS=ON
 cmake --build build/hpoea-core
 ctest --test-dir build/hpoea-core -L hpoea-core --output-on-failure
 ```
@@ -87,6 +92,7 @@ Pagmo2 wrapper and example build:
 
 ```bash
 cmake -S . -B build/hpoea-pagmo \
+  -DCMAKE_BUILD_TYPE=Release \
   -DHPOEA_BUILD_TESTS=ON \
   -DHPOEA_WITH_PAGMO=ON \
   -DPagmo_DIR=/path/to/pagmo/lib/cmake/pagmo
@@ -108,11 +114,12 @@ In a Pagmo-enabled build, the CLI can run the supported built-in path:
 
 For now, `run` supports configs that use `sphere`, `de`, and either `cmaes` or `random_search`.
 
-The helper script provides the same checks:
+The helper script provides the same checks. It runs both the core and the
+Pagmo-enabled flows by default; use `--core-only` to skip Pagmo:
 
 ```bash
 ./run_tests.sh --core-only
-./run_tests.sh --with-pagmo --pagmo-dir /path/to/pagmo/lib/cmake/pagmo
+./run_tests.sh --pagmo-dir /path/to/pagmo/lib/cmake/pagmo
 ```
 
 CMake integration, config, parameters, logging, and troubleshooting details are in [docs/reference.md](docs/reference.md).

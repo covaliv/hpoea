@@ -17,8 +17,10 @@ Core requirements:
 
 The core build checks the library without Pagmo2.
 
+Measurement and benchmark runs must use a `Release` build. The top-level CMakeLists defaults `CMAKE_BUILD_TYPE` to `Release` when it is unset (and no multi-config generator is in use), but pass it explicitly for reproducible measurements, or `-DCMAKE_BUILD_TYPE=Debug` for debugging.
+
 ```bash
-cmake -S . -B build/hpoea-core -DHPOEA_BUILD_TESTS=ON
+cmake -S . -B build/hpoea-core -DCMAKE_BUILD_TYPE=Release -DHPOEA_BUILD_TESTS=ON
 cmake --build build/hpoea-core
 ctest --test-dir build/hpoea-core -L hpoea-core --output-on-failure
 ```
@@ -35,6 +37,7 @@ Pagmo-enabled configure, build, and test:
 
 ```bash
 cmake -S . -B build/hpoea-pagmo \
+  -DCMAKE_BUILD_TYPE=Release \
   -DHPOEA_BUILD_TESTS=ON \
   -DHPOEA_WITH_PAGMO=ON \
   -DPagmo_DIR=/path/to/pagmo/lib/cmake/pagmo
@@ -44,7 +47,8 @@ ctest --test-dir build/hpoea-pagmo -L hpoea-pagmo --output-on-failure
 
 `Pagmo_DIR` points to the directory that contains `PagmoConfig.cmake`.
 `CMAKE_PREFIX_PATH` adds install prefixes to CMake's search paths.
-The helper script runs the core suite by default and can opt into Pagmo:
+The helper script runs both the core and Pagmo-enabled flows by default; use
+`--core-only` to skip Pagmo:
 
 ```bash
 ./run_tests.sh
@@ -150,7 +154,7 @@ Key types:
 - `core::IEvolutionaryAlgorithm`: configurable optimizer that returns one `core::OptimizationResult`.
 - `core::IEvolutionaryAlgorithmFactory`: creates fresh algorithm instances and exposes their parameter space.
 - `core::IHyperparameterOptimizer`: searches algorithm parameters and returns one `core::HyperparameterOptimizationResult`.
-- `core::SequentialExperimentManager` / `core::ParallelExperimentManager`: repeat optimizer trials and log inner algorithm trials.
+- `core::SequentialExperimentManager` / `core::ParallelExperimentManager`: repeat optimizer trials and log inner algorithm trials. The parallel manager distributes independent trials over a std::thread worker pool (`max_parallel_trials` caps the workers); trial seeds are fixed per trial index in advance, so per-trial results are identical to the sequential manager.
 - `core::JsonlLogger`: appends JSON Lines records.
 
 Budget and usage names are intentionally different for the inner and outer loops:
@@ -161,6 +165,8 @@ Budget and usage names are intentionally different for the inner and outer loops
 | Outer hyperparameter optimizer run | `core::Budget` | `objective_calls`, `iterations`, `wall_time` |
 
 TOML config budgets support `generations` and `function_evaluations`; `wall_time` is available through the C++ API.
+
+Budget currency for comparisons: `optimizer_budget.function_evaluations` counts completed inner-EA runs and is the only cross-optimizer-comparable unit, so optimizer comparisons should budget by `function_evaluations`. `optimizer_budget.generations` is optimizer-specific (random search rejects it) and is not comparable across optimizers.
 
 ## TOML config
 
@@ -232,8 +238,9 @@ Config notes:
 - `[suite].name` and `[suite].output_dir`: required non-empty strings.
 - `[suite].repetitions`: defaults to `1`; valid range starts at `1`.
 - Problem parameter values may be integer, floating-point, boolean, string, or numeric arrays.
+- Box-problem `lower_bound` and `upper_bound` are optional but must be given together; omit both to keep each problem's canonical domain (e.g. Schwefel `[-500, 500]`, Ackley `[-32.768, 32.768]`).
 - Nested problem parameter tables, mixed non-numeric arrays, `[suite.defaults]`, and `[[matrices]]` are rejected.
-- `[[experiments]].seed` is the repetition-zero seed; later repetitions use `seed + repetition_index`.
+- `[[experiments]].seed` seeds the experiment; each repetition derives its own seed by hashing the explicit seed and the repetition index (FNV-1a), so nearby explicit seeds do not share repetition seeds.
 - If an experiment seed is missing, suite expansion derives a deterministic seed from the suite and experiment fields.
 - Expanded output paths look like `output_dir/experiments/<output_name>/run-000.jsonl`.
 
@@ -299,13 +306,13 @@ Transforms affect the values seen by the hyperparameter optimizer. Decoded value
 
 | Optimizer | Config id | Identity | Parameters |
 |---|---|---|---|
-| Random Search | `random_search` | `RandomSearch` / `uniform_random` | `sample_count` integer default `100` range `1..100000` |
+| Random Search | `random_search` | `RandomSearch` / `uniform_random` | `sample_count` integer default `0` range `0..100000`; `0` means budget-driven (requires `optimizer_budget.function_evaluations`) |
 
 ### Pagmo hyperparameter optimizers
 
 | Optimizer | Config id | Identity | Parameters |
 |---|---|---|---|
-| CMA-ES | `cmaes` | `CMAESHyperOptimizer` / `pagmo::cmaes` | `generations` integer default `100` range `1..1000`; `sigma0` double default `0.5` range `1e-6..10`; `cc` double default `0.4` range `0..1`; `cs` double default `0.3` range `0..1`; `c1` double default `0.05` range `0..1`; `cmu` double default `0.1` range `0..1`; `ftol` double default `1e-6` range `0..1`; `xtol` double default `1e-6` range `0..1`; `memory` boolean default `false`; `force_bounds` boolean default `false` |
+| CMA-ES | `cmaes` | `CMAESHyperOptimizer` / `pagmo::cmaes` | `generations` integer default `100` range `1..1000`; `sigma0` double default `0.5` range `1e-6..10`; `cc` double default `0.4` range `0..1`; `cs` double default `0.3` range `0..1`; `c1` double default `0.05` range `0..1`; `cmu` double default `0.1` range `0..1`; `ftol` double default `1e-6` range `0..1`; `xtol` double default `1e-6` range `0..1`; `force_bounds` boolean default `false` |
 | PSO | `pso` | `PSOHyperOptimizer` / `pagmo::pso` | `variant` integer default `5` range `1..6`; `generations` integer default `100` range `1..1000`; `omega` double default `0.7298` range `0..1`; `eta1` double default `2.05` range `1..3`; `eta2` double default `2.05` range `1..3`; `max_velocity` double default `0.5` range `0..100` |
 | Simulated Annealing | `simulated_annealing` | `SimulatedAnnealing` / `pagmo::simulated_annealing` | `iterations` integer default `1000` range `1..100000`; `ts` double default `10.0` range `1e-6..100`; `tf` double default `0.1` range `1e-6..100`; `n_T_adj` integer default `10` range `1..10000`; `n_range_adj` integer default `1` range `1..10000`; `bin_size` integer default `10` range `1..1000`; `start_range` double default `1.0` range `0..1` |
 | NLopt Nelder-Mead | `nelder_mead` | `NelderMead` / `nlopt::neldermead` | `max_fevals` integer default `1000` range `1..100000`; `xtol_rel` double default `1e-8` range `1e-15..1e-1`; `ftol_rel` double default `1e-8` range `1e-15..1e-1` |
@@ -413,11 +420,13 @@ Seed behavior:
 |---|---|
 | `ExperimentConfig.random_seed` set | experiment managers use that seed to create optimizer trial seeds |
 | `ExperimentConfig.random_seed` missing | experiment managers create an `actual_seed` with `std::random_device` |
-| `[[experiments]].seed` set | repetition zero uses that seed; later repetitions use `seed + repetition_index` |
+| `[[experiments]].seed` set | each repetition derives its seed by hashing the explicit seed and the repetition index (FNV-1a) |
 | experiment seed missing in TOML expansion | suite expansion derives a deterministic seed from suite and experiment fields |
 | parallel experiments | preserve run seeds and results; log line order alone is not a stable source of run identity |
 
 The built-in benchmark problems and `apps/benchmark_suite.cpp` are small benchmark examples, not a complete comparison protocol by themselves.
+
+The benchmark apps (`apps/benchmark_suite.cpp`, `apps/optimizer_comparison_example.cpp`) set a fixed `ExperimentConfig.random_seed` and print `ExperimentResult.actual_seed`, so a recorded run names the seed that produced its numbers and is reproducible. Their optimizer budgets use `function_evaluations` so the compared optimizers receive the same number of inner-EA runs.
 
 ## Troubleshooting
 
