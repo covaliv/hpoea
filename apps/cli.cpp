@@ -237,7 +237,7 @@ std::optional<hpoea::core::ExperimentConfig> make_experiment_config(
     hpoea::core::ExperimentConfig config;
     config.experiment_id = run.run_id;
     config.trials_per_optimizer = 1;
-    config.islands = 1;
+    config.max_parallel_trials = 1;
     config.algorithm_budget = to_core_budget(run.algorithm_budget);
     config.optimizer_budget = to_core_budget(run.optimizer_budget);
     config.log_file_path = run.planned_output_path;

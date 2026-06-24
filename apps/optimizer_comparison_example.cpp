@@ -12,21 +12,23 @@
 #include <iomanip>
 #include <vector>
 #include <algorithm>
+#include <cmath>
+#include <numeric>
 
 int main() {
     using namespace hpoea;
-    
+
     wrappers::problems::RastriginProblem problem(12);
     pagmo_wrappers::PagmoDifferentialEvolutionFactory ea_factory;
-    
+
     struct OptimizerConfig {
         std::string name;
         std::unique_ptr<core::IHyperparameterOptimizer> optimizer;
         core::ParameterSet params;
     };
-    
+
     std::vector<OptimizerConfig> optimizers;
-    
+
     {
         auto opt = std::make_unique<pagmo_wrappers::PagmoCmaesHyperOptimizer>();
         core::ParameterSet params;
@@ -35,7 +37,7 @@ int main() {
         opt->configure(params);
         optimizers.push_back({"CMA-ES", std::move(opt), std::move(params)});
     }
-    
+
     {
         auto opt = std::make_unique<pagmo_wrappers::PagmoSimulatedAnnealingHyperOptimizer>();
         core::ParameterSet params;
@@ -45,7 +47,7 @@ int main() {
         opt->configure(params);
         optimizers.push_back({"SimulatedAnnealing", std::move(opt), std::move(params)});
     }
-    
+
     {
         auto opt = std::make_unique<pagmo_wrappers::PagmoPsoHyperOptimizer>();
         core::ParameterSet params;
@@ -56,49 +58,67 @@ int main() {
         opt->configure(params);
         optimizers.push_back({"PSO", std::move(opt), std::move(params)});
     }
-    
+
     core::Budget budget;
     budget.generations = 15;
     budget.function_evaluations = 3000;
-    
+
     std::vector<std::pair<std::string, double>> results;
-    
+
     for (auto &opt_config : optimizers) {
         core::ExperimentConfig config;
         config.experiment_id = "comparison_" + opt_config.name;
         config.trials_per_optimizer = 3;
-        config.islands = 1;
+        config.max_parallel_trials = 1;
         config.algorithm_budget.generations = 30;
         config.optimizer_budget = budget;
         config.log_file_path = "comparison_" + opt_config.name + ".jsonl";
-        
+
         core::JsonlLogger logger(config.log_file_path);
         core::SequentialExperimentManager manager;
-        
+
         auto result = manager.run_experiment(config, *opt_config.optimizer, ea_factory, problem, logger);
-        
-        if (!result.optimizer_results.empty()) {
-            const auto &best = result.optimizer_results[0];
-            results.push_back({opt_config.name, best.best_objective});
-            
+
+        std::vector<double> objectives;
+        std::size_t excluded = 0;
+        for (const auto &r : result.optimizer_results) {
+            const bool success_like = r.status == core::RunStatus::Success
+                || r.status == core::RunStatus::BudgetExceeded;
+            if (success_like && std::isfinite(r.best_objective)) {
+                objectives.push_back(r.best_objective);
+            } else {
+                excluded += 1;
+            }
+        }
+
+        if (!objectives.empty()) {
+            const double sum = std::accumulate(objectives.begin(), objectives.end(), 0.0);
+            const double best = *std::min_element(objectives.begin(), objectives.end());
+            const double avg = sum / static_cast<double>(objectives.size());
+            results.push_back({opt_config.name, best});
+
             std::cout << std::fixed << std::setprecision(6);
-            std::cout << opt_config.name << ": " << best.best_objective 
-                      << " (trials: " << best.trials.size() 
-                      << ", evals: " << best.optimizer_usage.objective_calls << ")\n";
+            std::cout << opt_config.name << ": best=" << best << " avg=" << avg
+                      << " (included: " << objectives.size()
+                      << ", excluded: " << excluded << ")\n";
+        } else {
+            std::cout << std::fixed << std::setprecision(6);
+            std::cout << opt_config.name << ": no successful trials"
+                      << " (excluded: " << excluded << ")\n";
         }
     }
-    
+
     if (!results.empty()) {
         std::sort(results.begin(), results.end(),
             [](const auto &a, const auto &b) { return a.second < b.second; });
-        
+
         std::cout << std::fixed << std::setprecision(6);
         for (std::size_t i = 0; i < results.size(); ++i) {
-            std::cout << (i + 1) << ". " << results[i].first 
-                      << ": " << results[i].second << "\n";
+            std::cout << (i + 1) << ". " << results[i].first
+                      << ": best=" << results[i].second << "\n";
         }
     }
-    
+
     return 0;
 }
 

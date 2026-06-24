@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <iomanip>
@@ -33,11 +34,20 @@ struct Benchmark {
     std::size_t trials;
 };
 
+// fixed seed so benchmark runs are reproducible
+constexpr unsigned long benchmark_seed = 1729;
+// function_evaluations is the only budget we can compare across optimizers
+constexpr std::size_t optimizer_fevals = 240;
+
 struct Stats {
     double min, avg, max;
 };
 
+// empty input (every optimizer excluded) reports zeros
 Stats compute_stats(const std::vector<double> &v) {
+    if (v.empty()) {
+        return {0.0, 0.0, 0.0};
+    }
     double sum = std::accumulate(v.begin(), v.end(), 0.0);
     return {*std::min_element(v.begin(), v.end()),
             sum / static_cast<double>(v.size()),
@@ -67,8 +77,7 @@ int main() {
         b.hoa = std::make_unique<pagmo_wrappers::PagmoCmaesHyperOptimizer>();
         b.hoa_params.emplace("generations", static_cast<std::int64_t>(full_mode ? 30 : 8));
         b.algo_budget.generations = full_mode ? 100 : 30;
-        b.opt_budget.generations = full_mode ? 30 : 8;
-        b.opt_budget.function_evaluations = full_mode ? 5000 : 1200;
+        b.opt_budget.function_evaluations = optimizer_fevals;
         b.trials = full_mode ? 3 : 1;
         benchmarks.push_back(std::move(b));
     }
@@ -81,8 +90,7 @@ int main() {
         b.hoa = std::make_unique<pagmo_wrappers::PagmoPsoHyperOptimizer>();
         b.hoa_params.emplace("generations", static_cast<std::int64_t>(full_mode ? 25 : 6));
         b.algo_budget.generations = full_mode ? 80 : 24;
-        b.opt_budget.generations = full_mode ? 25 : 6;
-        b.opt_budget.function_evaluations = full_mode ? 4000 : 1000;
+        b.opt_budget.function_evaluations = optimizer_fevals;
         b.trials = full_mode ? 3 : 1;
         benchmarks.push_back(std::move(b));
     }
@@ -94,8 +102,13 @@ int main() {
         b.ea = std::make_unique<pagmo_wrappers::PagmoSelfAdaptiveDEFactory>();
         b.hoa = std::make_unique<pagmo_wrappers::PagmoSimulatedAnnealingHyperOptimizer>();
         b.hoa_params.emplace("iterations", static_cast<std::int64_t>(full_mode ? 40 : 10));
+        // sa cost/evolve = n_T_adj*n_range_adj*bin_size*dim = 5*1*3*7 = 105
+        // so 2 evolves fit 240
+        b.hoa_params.emplace("n_T_adj", static_cast<std::int64_t>(5));
+        b.hoa_params.emplace("n_range_adj", static_cast<std::int64_t>(1));
+        b.hoa_params.emplace("bin_size", static_cast<std::int64_t>(3));
         b.algo_budget.generations = full_mode ? 120 : 36;
-        b.opt_budget.function_evaluations = full_mode ? 3000 : 900;
+        b.opt_budget.function_evaluations = optimizer_fevals;
         b.trials = full_mode ? 3 : 1;
         benchmarks.push_back(std::move(b));
     }
@@ -107,15 +120,15 @@ int main() {
         std::cout << "  hoa: " << b.hoa->identity().family << "\n";
         std::cout << "  trials: " << b.trials << "\n";
 
-        b.hoa->configure(b.hoa_params);
-
         core::ExperimentConfig cfg;
         cfg.experiment_id = b.name;
         cfg.trials_per_optimizer = b.trials;
-        cfg.islands = 1;
+        cfg.max_parallel_trials = 1;
         cfg.algorithm_budget = b.algo_budget;
         cfg.optimizer_budget = b.opt_budget;
         cfg.log_file_path = b.name + "_benchmark.jsonl";
+        cfg.random_seed = benchmark_seed;
+        cfg.optimizer_parameters = b.hoa_params;
 
         if (std::filesystem::exists(cfg.log_file_path)) {
             std::filesystem::remove(cfg.log_file_path);
@@ -133,9 +146,17 @@ int main() {
         std::vector<double> objectives;
         std::size_t total_trials = 0;
         std::size_t total_fevals = 0;
+        std::size_t excluded_trials = 0;
 
         for (const auto &r : result.optimizer_results) {
-            objectives.push_back(r.best_objective);
+            const bool success_like = r.status == core::RunStatus::Success
+                || r.status == core::RunStatus::BudgetExceeded;
+            const bool finite = std::isfinite(r.best_objective);
+            if (success_like && finite) {
+                objectives.push_back(r.best_objective);
+            } else {
+                excluded_trials += 1;
+            }
             total_trials += r.trials.size();
             total_fevals += r.optimizer_usage.objective_calls;
         }
@@ -143,10 +164,14 @@ int main() {
         auto stats = compute_stats(objectives);
 
         std::cout << "  results:\n";
+        std::cout << "    seed: " << result.actual_seed << "\n";
         std::cout << "    time: " << ms << " ms\n";
         std::cout << "    trials: " << total_trials << "\n";
         std::cout << "    fevals: " << total_fevals << "\n";
-        std::cout << "    objective (min/avg/max): " << stats.min << " / " << stats.avg << " / " << stats.max << "\n\n";
+        std::cout << "    objective (min/avg/max): " << stats.min
+                  << " / " << stats.avg << " / " << stats.max << "\n";
+        std::cout << "    included_optimizers: " << objectives.size() << "\n";
+        std::cout << "    excluded_optimizers: " << excluded_trials << "\n\n";
     }
 
     std::cout << "benchmark suite complete\n";

@@ -14,7 +14,9 @@ namespace hpoea::core {
 
 struct ExperimentConfig {
     std::string experiment_id;
-    std::size_t islands{1};
+    // worker thread cap for outer trials
+    // plain threads, not pagmo islands
+    std::size_t max_parallel_trials{1};
     std::size_t trials_per_optimizer{1};
     Budget algorithm_budget{};
     Budget optimizer_budget{};

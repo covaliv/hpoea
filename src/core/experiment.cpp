@@ -2,10 +2,12 @@
 
 #include "hpoea/core/hyperparameter_optimizer.hpp"
 #include "hpoea/core/logging.hpp"
+#include "hpoea/core/seeding.hpp"
 #include "hpoea/core/types.hpp"
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <exception>
 #include <functional>
 #include <future>
@@ -30,12 +32,14 @@ using hpoea::core::ParameterSet;
 using hpoea::core::ParameterValidationError;
 using hpoea::core::RunRecord;
 
-ParameterSet resolve_optimizer_parameters(const hpoea::core::IHyperparameterOptimizer &optimizer,
+// reconfigure when overrides are passed
+// otherwise keep and log the caller's configuration
+ParameterSet resolve_optimizer_parameters(hpoea::core::IHyperparameterOptimizer &optimizer,
                                           const std::optional<ParameterSet> &overrides) {
     if (overrides) {
-        return optimizer.parameter_space().apply_defaults(*overrides);
+        optimizer.configure(*overrides);
     }
-    return optimizer.parameter_space().apply_defaults({});
+    return optimizer.configured_parameters();
 }
 
 ParameterSet validate_baseline_parameters(const IEvolutionaryAlgorithmFactory &factory,
@@ -170,17 +174,17 @@ const IEvolutionaryAlgorithmFactory &resolve_algorithm_factory(
     return *owned_factory;
 }
 
-std::pair<std::mt19937, unsigned long> seed_rng(const std::optional<unsigned long> &random_seed) {
+std::pair<std::mt19937_64, unsigned long> seed_rng(const std::optional<unsigned long> &random_seed) {
     unsigned long actual_seed;
     if (random_seed) {
         actual_seed = *random_seed;
     } else {
         std::random_device device;
-        auto lo = static_cast<unsigned long>(device());
-        auto hi = static_cast<unsigned long>(device());
-        actual_seed = (hi << 32) | lo;
+        const auto lo = static_cast<std::uint64_t>(device());
+        const auto hi = static_cast<std::uint64_t>(device());
+        actual_seed = static_cast<unsigned long>((hi << 32) | lo);
     }
-    std::mt19937 rng(actual_seed);
+    std::mt19937_64 rng(hpoea::core::splitmix64(static_cast<std::uint64_t>(actual_seed)));
     return {rng, actual_seed};
 }
 
@@ -217,9 +221,9 @@ RunRecord build_run_record(const ExperimentConfig &config,
     return log_record;
 }
 
-void run_island_trials(
-    std::size_t island_idx,
-    std::size_t trials_per_island,
+// trial i uses seeds[i] and slot i
+// deterministic under any thread timing
+void run_trials(
     const ExperimentConfig &config,
     const std::vector<unsigned long> &seeds,
     const IEvolutionaryAlgorithmFactory &active_algorithm_factory,
@@ -229,12 +233,12 @@ void run_island_trials(
     hpoea::core::IHyperparameterOptimizer &worker_optimizer,
     hpoea::core::ILogger &logger,
     std::mutex &logger_mutex,
+    std::atomic<std::size_t> &next_trial_index,
     std::atomic<bool> &stop_requested) {
-    const std::size_t start_trial = island_idx * trials_per_island;
-    const std::size_t end_trial = std::min(start_trial + trials_per_island, config.trials_per_optimizer);
-
-    for (std::size_t trial = start_trial; trial < end_trial; ++trial) {
+    for (;;) {
         if (stop_requested.load(std::memory_order_relaxed)) break;
+        const std::size_t trial = next_trial_index.fetch_add(1, std::memory_order_relaxed);
+        if (trial >= config.trials_per_optimizer) break;
         const unsigned long optimizer_seed = seeds[trial];
 
         auto optimization_result = worker_optimizer.optimize(
@@ -244,7 +248,9 @@ void run_island_trials(
             config.algorithm_budget,
             optimizer_seed);
         optimization_result.seed = optimizer_seed;
-        optimization_result.effective_optimizer_parameters = optimizer_parameters;
+        if (optimization_result.effective_optimizer_parameters.empty()) {
+            optimization_result.effective_optimizer_parameters = optimizer_parameters;
+        }
 
         optimization_results[trial] = std::move(optimization_result);
 
@@ -276,10 +282,10 @@ ExperimentResult SequentialExperimentManager::run_experiment(const ExperimentCon
     if (config.trials_per_optimizer == 0) {
         throw std::invalid_argument("trials_per_optimizer must be greater than zero");
     }
-    if (config.islands > 1) {
+    if (config.max_parallel_trials > 1) {
         throw std::invalid_argument(
-            "sequential experiment manager does not support multiple islands; "
-            "use ParallelExperimentManager or set islands to 1");
+            "sequential experiment manager runs trials in the calling thread; "
+            "set max_parallel_trials to 1 or use ParallelExperimentManager");
     }
 
     std::unique_ptr<IEvolutionaryAlgorithmFactory> owned_factory;
@@ -291,36 +297,24 @@ ExperimentResult SequentialExperimentManager::run_experiment(const ExperimentCon
 
     ParameterSet optimizer_parameters = resolve_optimizer_parameters(optimizer, config.optimizer_parameters);
 
-    optimizer.configure(optimizer_parameters);
-
     auto [rng, actual_seed] = seed_rng(config.random_seed);
     result.actual_seed = actual_seed;
 
-    for (std::size_t trial = 0; trial < config.trials_per_optimizer; ++trial) {
-        const unsigned long optimizer_seed = static_cast<unsigned long>(rng());
-
-        auto optimization_result = optimizer.optimize(
-            active_algorithm_factory,
-            problem,
-            config.optimizer_budget,
-            config.algorithm_budget,
-            optimizer_seed);
-        optimization_result.seed = optimizer_seed;
-        optimization_result.effective_optimizer_parameters = optimizer_parameters;
-
-        for (const auto &trial_record : optimization_result.trials) {
-            logger.log(build_run_record(
-                config,
-                problem,
-                active_algorithm_factory.identity(),
-                optimizer.identity(),
-                optimizer_parameters,
-                optimizer_seed,
-                trial_record));
-        }
-
-        result.optimizer_results.push_back(std::move(optimization_result));
+    std::vector<unsigned long> seeds;
+    seeds.reserve(config.trials_per_optimizer);
+    for (std::size_t i = 0; i < config.trials_per_optimizer; ++i) {
+        seeds.push_back(static_cast<unsigned long>(rng()));
     }
+
+    std::vector<HyperparameterOptimizationResult> optimization_results(config.trials_per_optimizer);
+    std::mutex logger_mutex;
+    std::atomic<std::size_t> next_trial_index{0};
+    std::atomic<bool> stop_requested{false};
+
+    run_trials(config, seeds, active_algorithm_factory, problem, optimizer_parameters,
+               optimization_results, optimizer, logger, logger_mutex, next_trial_index, stop_requested);
+
+    result.optimizer_results = std::move(optimization_results);
 
     logger.flush();
 
@@ -342,8 +336,8 @@ ExperimentResult ParallelExperimentManager::run_experiment(const ExperimentConfi
     if (config.trials_per_optimizer == 0) {
         throw std::invalid_argument("trials_per_optimizer must be greater than zero");
     }
-    if (config.islands == 0) {
-        throw std::invalid_argument("islands must be greater than zero");
+    if (config.max_parallel_trials == 0) {
+        throw std::invalid_argument("max_parallel_trials must be greater than zero");
     }
 
     std::unique_ptr<IEvolutionaryAlgorithmFactory> owned_factory;
@@ -354,8 +348,6 @@ ExperimentResult ParallelExperimentManager::run_experiment(const ExperimentConfi
     result.experiment_id = config.experiment_id;
 
     ParameterSet optimizer_parameters = resolve_optimizer_parameters(optimizer, config.optimizer_parameters);
-
-    optimizer.configure(optimizer_parameters);
 
     auto [rng, actual_seed] = seed_rng(config.random_seed);
     result.actual_seed = actual_seed;
@@ -369,30 +361,36 @@ ExperimentResult ParallelExperimentManager::run_experiment(const ExperimentConfi
     std::mutex logger_mutex;
     std::mutex worker_error_mutex;
     std::vector<std::pair<std::size_t, std::exception_ptr>> worker_errors;
+    std::atomic<std::size_t> next_trial_index{0};
     std::atomic<bool> stop_requested{false};
 
-    const std::size_t num_islands = std::min({config.islands, config.trials_per_optimizer, num_threads_});
-    const std::size_t trials_per_island = (config.trials_per_optimizer + num_islands - 1) / num_islands;
+    const std::size_t num_workers = std::min({config.max_parallel_trials, config.trials_per_optimizer, num_threads_});
 
-    std::vector<std::thread> workers;
-    workers.reserve(num_islands);
-
-    for (std::size_t island_idx = 0; island_idx < num_islands; ++island_idx) {
+    // clone every worker optimizer before spawning any thread
+    // a clone throw mid-spawn would leave joinable threads behind
+    // that calls std::terminate
+    std::vector<HyperparameterOptimizerPtr> worker_optimizers;
+    worker_optimizers.reserve(num_workers);
+    for (std::size_t worker_idx = 0; worker_idx < num_workers; ++worker_idx) {
         auto worker_optimizer = optimizer.clone();
         if (!worker_optimizer) {
             throw std::runtime_error("IHyperparameterOptimizer::clone() returned null");
         }
+        worker_optimizers.push_back(std::move(worker_optimizer));
+    }
 
-        workers.emplace_back([&, island_idx, worker_optimizer = std::move(worker_optimizer)]() mutable {
+    std::vector<std::thread> workers;
+    workers.reserve(num_workers);
+    for (std::size_t worker_idx = 0; worker_idx < num_workers; ++worker_idx) {
+        workers.emplace_back([&, worker_idx]() {
             try {
-                run_island_trials(island_idx, trials_per_island, config, seeds,
-                                  active_algorithm_factory, problem, optimizer_parameters,
-                                  optimization_results, *worker_optimizer, logger,
-                                  logger_mutex, stop_requested);
+                run_trials(config, seeds, active_algorithm_factory, problem, optimizer_parameters,
+                           optimization_results, *worker_optimizers[worker_idx], logger, logger_mutex,
+                           next_trial_index, stop_requested);
             } catch (...) {
                 stop_requested.store(true, std::memory_order_relaxed);
                 std::scoped_lock lock(worker_error_mutex);
-                worker_errors.emplace_back(island_idx, std::current_exception());
+                worker_errors.emplace_back(worker_idx, std::current_exception());
             }
         });
     }
@@ -403,8 +401,8 @@ ExperimentResult ParallelExperimentManager::run_experiment(const ExperimentConfi
 
     if (!worker_errors.empty()) {
         std::string combined = std::to_string(worker_errors.size()) + " worker(s) failed in parallel experiment:";
-        for (const auto &[island, eptr] : worker_errors) {
-            combined += "\n  [island " + std::to_string(island) + "]: ";
+        for (const auto &[worker, eptr] : worker_errors) {
+            combined += "\n  [worker " + std::to_string(worker) + "]: ";
             try {
                 std::rethrow_exception(eptr);
             } catch (const std::exception &ex) {
@@ -416,18 +414,7 @@ ExperimentResult ParallelExperimentManager::run_experiment(const ExperimentConfi
         throw std::runtime_error(combined);
     }
 
-    std::size_t dropped = 0;
-    for (auto &opt_result : optimization_results) {
-        if (!opt_result.trials.empty()) {
-            result.optimizer_results.push_back(std::move(opt_result));
-        } else {
-            ++dropped;
-        }
-    }
-    if (dropped > 0 && !result.optimizer_results.empty()) {
-        auto &last = result.optimizer_results.back();
-        last.message += " (" + std::to_string(dropped) + " trial(s) dropped due to early termination)";
-    }
+    result.optimizer_results = std::move(optimization_results);
     logger.flush();
 
     return result;

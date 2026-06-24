@@ -3,6 +3,7 @@
 #include "hpoea/wrappers/pagmo/de_algorithm.hpp"
 #include "hpoea/wrappers/pagmo/cmaes_hyper.hpp"
 #include "hpoea/wrappers/problems/benchmark_problems.hpp"
+#include "test_util.hpp"
 
 #include <iostream>
 #include <iomanip>
@@ -21,7 +22,7 @@ int main() {
     core::ExperimentConfig config;
     config.experiment_id = "advanced_example";
     config.trials_per_optimizer = 5;
-    config.islands = 1;
+    config.max_parallel_trials = 1;
     config.algorithm_budget.generations = 50;
     config.optimizer_budget.generations = 15;
     config.optimizer_budget.function_evaluations = 3000;
@@ -43,11 +44,7 @@ int main() {
         std::cout << "function_evaluations: " << best_result.optimizer_usage.objective_calls << "\n";
         
         if (!best_result.best_parameters.empty()) {
-            for (const auto &[name, value] : best_result.best_parameters) {
-                std::cout << name << ": ";
-                std::visit([](auto v) { std::cout << v; }, value);
-                std::cout << "\n";
-            }
+            apps::print_parameters(std::cout, best_result.best_parameters);
         }
     }
     
