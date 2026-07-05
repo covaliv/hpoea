@@ -5,7 +5,9 @@
 #include "hpoea/core/hyperparameter_optimizer.hpp"
 #include "hpoea/core/problem.hpp"
 
+#include <cstddef>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -56,5 +58,8 @@ struct DispatchResult {
 
 [[nodiscard]] const config::OptimizerSpec *find_optimizer(const config::SuiteConfig &config,
                                                           std::string_view id) noexcept;
+
+[[nodiscard]] std::optional<std::size_t> tuned_algorithm_dimension(
+    const config::AlgorithmSpec &algorithm);
 
 } // namespace hpoea::cli

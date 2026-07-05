@@ -1,6 +1,6 @@
 #pragma once
 
-// shared CLI-driving helpers for cli_tests and cli_pagmo_smoke_tests.
+// shared CLI-driving helpers for cli_tests and cli_pagmo_tests
 // each including TU is compiled with a CLI_EXECUTABLE definition.
 
 #include <cerrno>

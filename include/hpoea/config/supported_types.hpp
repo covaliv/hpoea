@@ -24,6 +24,19 @@ constexpr std::array<std::string_view, 4> pagmo_optimizer_type_ids{
     "nelder_mead"
 };
 
+// problem type ids built into make_benchmark_problem
+constexpr std::array<std::string_view, 9> benchmark_problem_type_ids{
+    "sphere",
+    "rosenbrock",
+    "rastrigin",
+    "ackley",
+    "griewank",
+    "schwefel",
+    "zakharov",
+    "styblinski_tang",
+    "knapsack"
+};
+
 template <std::size_t Size>
 bool contains(const std::array<std::string_view, Size> &ids,
               std::string_view type_id) noexcept {

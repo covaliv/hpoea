@@ -93,11 +93,11 @@ if (HPOEA_WITH_PAGMO)
 endif ()
 
 if (HPOEA_WITH_PAGMO)
-    hpoea_add_test(cli_pagmo_smoke_tests cli_pagmo_smoke_tests.cpp
+    hpoea_add_test(cli_pagmo_tests cli_pagmo_tests.cpp
         LABEL hpoea-pagmo
         LIBS hpoea_core)
-    add_dependencies(cli_pagmo_smoke_tests cli)
-    target_compile_definitions(cli_pagmo_smoke_tests
+    add_dependencies(cli_pagmo_tests cli)
+    target_compile_definitions(cli_pagmo_tests
         PRIVATE
             CLI_EXECUTABLE="$<TARGET_FILE:cli>"
     )

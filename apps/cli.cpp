@@ -6,12 +6,14 @@
 #include "hpoea/core/experiment.hpp"
 #include "hpoea/core/logging.hpp"
 
+#include <cctype>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
 #include <iostream>
 #include <limits>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -205,6 +207,11 @@ int run_plan(const std::filesystem::path &path) {
         print_component_line(std::cout, "problem", dispatch.problem);
         print_component_line(std::cout, "algorithm", dispatch.algorithm);
         print_component_line(std::cout, "optimizer", dispatch.optimizer);
+        if (const auto *algorithm = hpoea::cli::find_algorithm(*config, run.algorithm_id)) {
+            if (const auto tunable = hpoea::cli::tuned_algorithm_dimension(*algorithm)) {
+                std::cout << "  tunable parameters: " << *tunable << '\n';
+            }
+        }
         std::cout << "  runnable: " << (dispatch.runnable ? "yes" : "no") << '\n';
     }
 
@@ -238,11 +245,13 @@ std::optional<hpoea::core::ExperimentConfig> make_experiment_config(
     config.experiment_id = run.run_id;
     config.trials_per_optimizer = 1;
     config.max_parallel_trials = 1;
+    config.validation_repeats = run.validation_repeats;
     config.algorithm_budget = to_core_budget(run.algorithm_budget);
     config.optimizer_budget = to_core_budget(run.optimizer_budget);
     config.log_file_path = run.planned_output_path;
     config.random_seed = *seed;
-    if (!algorithm->fixed_parameters.empty()) {
+    // baseline applies fixed parameters itself
+    if (optimizer->type != "baseline" && !algorithm->fixed_parameters.empty()) {
         config.algorithm_baseline_parameters = algorithm->fixed_parameters;
     }
     if (!optimizer->parameters.empty()) {
@@ -258,6 +267,76 @@ bool create_parent_directory(const std::filesystem::path &path) {
     }
     std::filesystem::create_directories(parent);
     return true;
+}
+
+bool is_run_output_file(const std::filesystem::path &path) {
+    const auto name = path.filename().string();
+    constexpr std::string_view prefix{"run-"};
+    constexpr std::string_view suffix{".jsonl"};
+    if (name.size() <= prefix.size() + suffix.size()) {
+        return false;
+    }
+    if (name.compare(0, prefix.size(), prefix) != 0 ||
+        name.compare(name.size() - suffix.size(), suffix.size(), suffix) != 0) {
+        return false;
+    }
+    for (std::size_t i = prefix.size(); i < name.size() - suffix.size(); ++i) {
+        if (std::isdigit(static_cast<unsigned char>(name[i])) == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// a config change can leave stale run files behind
+void remove_stale_outputs(const hpoea::config::SuiteConfig &config,
+                               const std::vector<PreparedRun> &prepared_runs) {
+    std::set<std::filesystem::path> planned_files;
+    std::set<std::filesystem::path> planned_dirs;
+    for (const auto &prepared : prepared_runs) {
+        auto planned = prepared.run.planned_output_path.lexically_normal();
+        planned_dirs.insert(planned.parent_path());
+        planned_files.insert(std::move(planned));
+    }
+
+    for (const auto &dir : planned_dirs) {
+        if (!std::filesystem::is_directory(dir)) {
+            continue;
+        }
+        for (const auto &entry : std::filesystem::directory_iterator(dir)) {
+            if (!entry.is_regular_file() || !is_run_output_file(entry.path())) {
+                continue;
+            }
+            if (planned_files.contains(entry.path().lexically_normal())) {
+                continue;
+            }
+            std::filesystem::remove(entry.path());
+            std::cout << "removed stale output: " << entry.path().generic_string() << '\n';
+        }
+    }
+
+    const auto experiments_root = (config.output_dir / "experiments").lexically_normal();
+    if (!std::filesystem::is_directory(experiments_root)) {
+        return;
+    }
+    for (const auto &entry : std::filesystem::directory_iterator(experiments_root)) {
+        if (!entry.is_directory() || planned_dirs.contains(entry.path().lexically_normal())) {
+            continue;
+        }
+        for (const auto &stale : std::filesystem::directory_iterator(entry.path())) {
+            if (!stale.is_regular_file() || !is_run_output_file(stale.path())) {
+                continue;
+            }
+            std::filesystem::remove(stale.path());
+            std::cout << "removed stale output: " << stale.path().generic_string() << '\n';
+        }
+        if (std::filesystem::is_empty(entry.path())) {
+            std::filesystem::remove(entry.path());
+            continue;
+        }
+        std::cerr << "warning: stale experiment output not in current plan: "
+                  << entry.path().generic_string() << '\n';
+    }
 }
 
 int run_config(const std::filesystem::path &path) {
@@ -297,6 +376,13 @@ int run_config(const std::filesystem::path &path) {
         return 1;
     }
 
+    try {
+        remove_stale_outputs(*config, prepared_runs);
+    } catch (const std::exception &exception) {
+        std::cerr << "error: " << exception.what() << '\n';
+        return 1;
+    }
+
     bool had_failed_status = false;
     try {
         for (auto &prepared : prepared_runs) {
@@ -306,28 +392,70 @@ int run_config(const std::filesystem::path &path) {
             }
 
             create_parent_directory(experiment_config->log_file_path);
-            // logger appends so a rerun must clear old records first
+            // logger appends
+            // so a rerun must clear old records first
             if (std::filesystem::exists(experiment_config->log_file_path)) {
                 std::filesystem::remove(experiment_config->log_file_path);
             }
-            hpoea::core::JsonlLogger logger{experiment_config->log_file_path};
             hpoea::core::SequentialExperimentManager manager;
-            const auto result = manager.run_experiment(
-                *experiment_config,
-                *prepared.dispatch.optimizer,
-                *prepared.dispatch.algorithm_factory,
-                *prepared.dispatch.problem,
-                logger);
+            hpoea::core::ExperimentResult result;
+            std::size_t records_written = 0;
+            {
+                hpoea::core::JsonlLogger logger{experiment_config->log_file_path};
+                result = manager.run_experiment(
+                    *experiment_config,
+                    *prepared.dispatch.optimizer,
+                    *prepared.dispatch.algorithm_factory,
+                    *prepared.dispatch.problem,
+                    logger);
+                records_written = logger.records_written();
+            }
 
             std::cout << "ran: " << prepared.run.run_id << '\n';
             std::cout << "  output: " << experiment_config->log_file_path.generic_string() << '\n';
             std::cout << "  optimizer_runs: " << result.optimizer_results.size() << '\n';
-            std::cout << "  records: " << logger.records_written() << '\n';
+            std::cout << "  records: " << records_written << '\n';
             for (const auto &optimizer_result : result.optimizer_results) {
                 const auto status = hpoea::core::detail::run_status_to_string(optimizer_result.status);
                 std::cout << "  status: " << status << '\n';
                 if (is_command_failure_status(optimizer_result.status)) {
                     had_failed_status = true;
+                }
+            }
+
+            if (records_written == 0) {
+                std::filesystem::remove(experiment_config->log_file_path);
+                std::cerr << "warning: run " << prepared.run.run_id
+                          << " produced no records; removed empty output "
+                          << experiment_config->log_file_path.generic_string() << '\n';
+                for (const auto &optimizer_result : result.optimizer_results) {
+                    if (!optimizer_result.message.empty()) {
+                        std::cerr << "warning: run " << prepared.run.run_id << ": "
+                                  << optimizer_result.message << '\n';
+                    }
+                }
+            } else {
+                // exit code stays 0 for budget outcomes
+                // so degraded runs must at least reach stderr
+                for (const auto &optimizer_result : result.optimizer_results) {
+                    if (optimizer_result.status != hpoea::core::RunStatus::Success) {
+                        std::cerr << "warning: run " << prepared.run.run_id << ": "
+                                  << hpoea::core::detail::run_status_to_string(optimizer_result.status);
+                        if (!optimizer_result.message.empty()) {
+                            std::cerr << ": " << optimizer_result.message;
+                        }
+                        std::cerr << '\n';
+                    }
+                    std::size_t failed_validations = 0;
+                    for (const auto &validation_run : optimizer_result.validation_runs) {
+                        if (is_command_failure_status(validation_run.status)) {
+                            failed_validations += 1;
+                        }
+                    }
+                    if (failed_validations > 0) {
+                        std::cerr << "warning: run " << prepared.run.run_id
+                                  << ": failed validation runs: " << failed_validations << '\n';
+                    }
                 }
             }
         }

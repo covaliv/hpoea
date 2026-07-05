@@ -99,6 +99,42 @@ function_evaluations = 2
 )";
 }
 
+std::string bench_config_with_output_dir(const std::filesystem::path &output_dir,
+                                               std::string_view problem_type) {
+    return R"(schema_version = 1
+
+[suite]
+name = "cli_problems"
+output_dir = ")" + output_dir.generic_string() + R"("
+suite_seed = 77
+repetitions = 1
+
+[problems.bench]
+type = ")" + std::string{problem_type} + R"("
+dimension = 2
+
+[algorithms.de_default]
+type = "de"
+
+[optimizers.rs]
+type = "random_search"
+parameters = { sample_count = 2 }
+
+[[experiments]]
+id = "bench_de_random"
+problem = "bench"
+algorithm = "de_default"
+optimizer = "rs"
+seed = 11
+
+[experiments.algorithm_budget]
+generations = 1
+
+[experiments.optimizer_budget]
+function_evaluations = 2
+)";
+}
+
 } // namespace
 
 int main() {
@@ -151,8 +187,8 @@ int main() {
         HPOEA_V2_CHECK(runner, result.stdout_text.empty(),
                        "unsupported dispatch failure has no stdout");
         HPOEA_V2_CHECK(runner, contains(result.stderr_text,
-                                       "unsupported dispatch for problem type: local_problem"),
-                       "unsupported dispatch reports custom problem");
+                                       "problems.local_problem: unknown problem type 'local_problem'"),
+                       "run reports unknown custom problem");
         HPOEA_V2_CHECK(runner, contains(result.stderr_text,
                                        "unsupported dispatch for algorithm type: local_algorithm"),
                        "unsupported dispatch reports custom algorithm");
@@ -195,7 +231,7 @@ int main() {
                        "random_search plan preview has no stderr");
         HPOEA_V2_CHECK(runner, contains(result.stdout_text,
                                        "optimizer: rs type=random_search backend=core dispatch=supported"),
-                       "plan preview annotates random_search as core supported");
+                       "plan preview shows random_search as core supported");
 #if defined(HPOEA_CONFIG_HAS_PAGMO)
         HPOEA_V2_CHECK(runner, contains(result.stdout_text, "runnable: yes"),
                        "Pagmo plan preview marks random_search run runnable with de");
@@ -208,6 +244,24 @@ int main() {
 #endif
         HPOEA_V2_CHECK(runner, !std::filesystem::exists(output_dir),
                        "random_search plan preview does not create output directory");
+    }
+
+    {
+        // new benchmark problems dispatch as core supported
+        const auto output_dir = work_dir / "rastrigin-plan-output";
+        const auto config_path = work_dir / "rastrigin_plan.toml";
+        write_file(config_path, bench_config_with_output_dir(output_dir, "rastrigin"));
+
+        const auto result = run_cli({"plan", config_path.string()}, work_dir);
+        HPOEA_V2_CHECK(runner, result.exit_code == 0,
+                       "plan previews rastrigin config");
+        HPOEA_V2_CHECK(runner, contains(result.stdout_text,
+                                       "problem: bench type=rastrigin backend=core dispatch=supported"),
+                       "plan preview shows rastrigin as core supported");
+#if defined(HPOEA_CONFIG_HAS_PAGMO)
+        HPOEA_V2_CHECK(runner, contains(result.stdout_text, "runnable: yes"),
+                       "Pagmo plan preview marks rastrigin run runnable");
+#endif
     }
 
 #if !defined(HPOEA_CONFIG_HAS_PAGMO)

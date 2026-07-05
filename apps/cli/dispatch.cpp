@@ -1,20 +1,27 @@
 #include "dispatch.hpp"
 
 #include "hpoea/config/supported_types.hpp"
+#include "hpoea/core/baseline_optimizer.hpp"
 #include "hpoea/core/random_search_optimizer.hpp"
 #include "hpoea/core/search_space.hpp"
 #include "hpoea/wrappers/problems/benchmark_problems.hpp"
 
 #if defined(HPOEA_CONFIG_HAS_PAGMO)
 #include "hpoea/wrappers/pagmo/cmaes_hyper.hpp"
+#include "hpoea/wrappers/pagmo/de1220_algorithm.hpp"
 #include "hpoea/wrappers/pagmo/de_algorithm.hpp"
+#include "hpoea/wrappers/pagmo/nm_hyper.hpp"
+#include "hpoea/wrappers/pagmo/pso_algorithm.hpp"
+#include "hpoea/wrappers/pagmo/pso_hyper.hpp"
+#include "hpoea/wrappers/pagmo/sa_hyper.hpp"
+#include "hpoea/wrappers/pagmo/sade_algorithm.hpp"
+#include "hpoea/wrappers/pagmo/sga_algorithm.hpp"
 #endif
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -33,10 +40,20 @@ using hpoea::config::SearchParameterMode;
 using hpoea::config::SearchParameterSpec;
 using hpoea::config::SuiteConfig;
 
+using hpoea::config::benchmark_problem_type_ids;
 using hpoea::config::build_has_pagmo;
 using hpoea::config::contains;
 using hpoea::config::pagmo_algorithm_type_ids;
 using hpoea::config::pagmo_optimizer_type_ids;
+
+// cmaes as inner ea has no dispatch case yet
+constexpr std::array<std::string_view, 5> cli_algorithm_type_ids{
+    "de",
+    "sade",
+    "pso",
+    "sga",
+    "de1220"
+};
 
 const ProblemSpec *find_problem(const SuiteConfig &config,
                                 std::string_view id) {
@@ -53,7 +70,7 @@ hpoea::cli::ComponentDispatch annotate_problem(const ProblemSpec *problem,
     if (!problem) {
         return {std::string{id}, "<missing>", "missing", "unsupported", false};
     }
-    if (problem->type == "sphere") {
+    if (contains(benchmark_problem_type_ids, problem->type)) {
         return {problem->id, problem->type, "core", "supported", true};
     }
     return {problem->id, problem->type, "custom", "unsupported", false};
@@ -64,7 +81,7 @@ hpoea::cli::ComponentDispatch annotate_algorithm(const AlgorithmSpec *algorithm,
     if (!algorithm) {
         return {std::string{id}, "<missing>", "missing", "unsupported", false};
     }
-    if (algorithm->type == "de") {
+    if (contains(cli_algorithm_type_ids, algorithm->type)) {
         return {algorithm->id,
                 algorithm->type,
                 build_has_pagmo() ? "pagmo" : "pagmo-unavailable",
@@ -86,22 +103,15 @@ hpoea::cli::ComponentDispatch annotate_optimizer(const OptimizerSpec *optimizer,
     if (!optimizer) {
         return {std::string{id}, "<missing>", "missing", "unsupported", false};
     }
-    if (optimizer->type == "random_search") {
+    if (optimizer->type == "random_search" || optimizer->type == "baseline") {
         return {optimizer->id, optimizer->type, "core", "supported", true};
-    }
-    if (optimizer->type == "cmaes") {
-        return {optimizer->id,
-                optimizer->type,
-                build_has_pagmo() ? "pagmo" : "pagmo-unavailable",
-                build_has_pagmo() ? "supported" : "requires-pagmo",
-                build_has_pagmo()};
     }
     if (contains(pagmo_optimizer_type_ids, optimizer->type)) {
         return {optimizer->id,
                 optimizer->type,
                 build_has_pagmo() ? "pagmo" : "pagmo-unavailable",
-                "unsupported",
-                false};
+                build_has_pagmo() ? "supported" : "requires-pagmo",
+                build_has_pagmo()};
     }
     return {optimizer->id, optimizer->type, "custom", "unsupported", false};
 }
@@ -119,106 +129,51 @@ void add_unsupported_error(std::vector<std::string> &errors,
         + std::string{kind} + " type: " + std::string{type});
 }
 
-const ConfigValue *find_parameter(const ProblemParameterSet &parameters,
-                                  std::string_view name) {
-    for (const auto &[key, value] : parameters) {
-        if (key == name) {
-            return &value;
-        }
+std::unique_ptr<hpoea::core::IProblem> make_problem(const ProblemSpec &problem,
+                                                    std::vector<std::string> &errors) {
+    try {
+        return hpoea::wrappers::problems::make_benchmark_problem(problem.type, problem.parameters);
+    } catch (const std::exception &exception) {
+        errors.push_back("problems." + problem.id + ": " + exception.what());
+        return nullptr;
+    }
+}
+
+#if defined(HPOEA_CONFIG_HAS_PAGMO)
+std::unique_ptr<hpoea::core::IEvolutionaryAlgorithmFactory> make_pagmo_algorithm_factory(
+    std::string_view type) {
+    using namespace hpoea::pagmo_wrappers;
+    if (type == "de") {
+        return std::make_unique<PagmoDifferentialEvolutionFactory>();
+    }
+    if (type == "sade") {
+        return std::make_unique<PagmoSelfAdaptiveDEFactory>();
+    }
+    if (type == "pso") {
+        return std::make_unique<PagmoParticleSwarmOptimizationFactory>();
+    }
+    if (type == "sga") {
+        return std::make_unique<PagmoSgaFactory>();
+    }
+    if (type == "de1220") {
+        return std::make_unique<PagmoDe1220Factory>();
     }
     return nullptr;
 }
-
-std::optional<std::int64_t> read_integer_parameter(const ProblemParameterSet &parameters,
-                                                   std::string_view name,
-                                                   std::string_view path,
-                                                   std::vector<std::string> &errors) {
-    const auto *value = find_parameter(parameters, name);
-    if (!value) {
-        errors.push_back(std::string{path} + " is required");
-        return std::nullopt;
-    }
-    if (const auto *integer = std::get_if<std::int64_t>(value)) {
-        return *integer;
-    }
-    errors.push_back(std::string{path} + " must be an integer");
-    return std::nullopt;
-}
-
-std::optional<double> read_optional_number_parameter(const ProblemParameterSet &parameters,
-                                                     std::string_view name,
-                                                     std::string_view path,
-                                                     std::vector<std::string> &errors) {
-    const auto *value = find_parameter(parameters, name);
-    if (!value) {
-        return std::nullopt;
-    }
-    if (const auto *floating = std::get_if<double>(value)) {
-        return *floating;
-    }
-    if (const auto *integer = std::get_if<std::int64_t>(value)) {
-        return static_cast<double>(*integer);
-    }
-    errors.push_back(std::string{path} + " must be numeric");
-    return std::nullopt;
-}
-
-std::unique_ptr<hpoea::core::IProblem> make_problem(const ProblemSpec &problem,
-                                                    std::vector<std::string> &errors) {
-    if (problem.type != "sphere") {
-        add_unsupported_error(errors, "problem", problem.type);
-        return nullptr;
-    }
-
-    constexpr std::array<std::string_view, 3> sphere_parameter_keys{"dimension", "lower_bound", "upper_bound"};
-    const auto errors_before = errors.size();
-    for (const auto &[key, value] : problem.parameters) {
-        if (!contains(sphere_parameter_keys, key)) {
-            errors.push_back("problems." + problem.id + "." + key + " is not a recognized sphere parameter");
-        }
-    }
-    if (errors.size() != errors_before) {
-        return nullptr;
-    }
-
-    const auto dimension = read_integer_parameter(
-        problem.parameters, "dimension", "problems." + problem.id + ".dimension", errors);
-    const auto lower_bound = read_optional_number_parameter(
-        problem.parameters, "lower_bound", "problems." + problem.id + ".lower_bound", errors).value_or(-5.0);
-    const auto upper_bound = read_optional_number_parameter(
-        problem.parameters, "upper_bound", "problems." + problem.id + ".upper_bound", errors).value_or(5.0);
-
-    if (!dimension.has_value()) {
-        return nullptr;
-    }
-    if (*dimension < 1) {
-        errors.push_back("problems." + problem.id + ".dimension must be at least 1");
-        return nullptr;
-    }
-    const auto max_size = static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max());
-    if (static_cast<std::uint64_t>(*dimension) > max_size) {
-        errors.push_back("problems." + problem.id + ".dimension is too large");
-        return nullptr;
-    }
-
-    return std::make_unique<hpoea::wrappers::problems::SphereProblem>(
-        static_cast<std::size_t>(*dimension),
-        lower_bound,
-        upper_bound);
-}
+#endif
 
 std::unique_ptr<hpoea::core::IEvolutionaryAlgorithmFactory> make_algorithm_factory(
     const AlgorithmSpec &algorithm,
     std::vector<std::string> &errors) {
-    if (algorithm.type != "de") {
+    if (!contains(cli_algorithm_type_ids, algorithm.type)) {
         add_unsupported_error(errors, "algorithm", algorithm.type);
         return nullptr;
     }
 
 #if defined(HPOEA_CONFIG_HAS_PAGMO)
-    return std::make_unique<hpoea::pagmo_wrappers::PagmoDifferentialEvolutionFactory>();
+    return make_pagmo_algorithm_factory(algorithm.type);
 #else
-    errors.push_back("algorithm type requires a Pagmo-enabled build: de");
+    errors.push_back("algorithm type requires a Pagmo-enabled build: " + algorithm.type);
     return nullptr;
 #endif
 }
@@ -287,19 +242,39 @@ std::unique_ptr<hpoea::core::IHyperparameterOptimizer> make_optimizer(
         return random_search;
     }
 
-    if (optimizer.type != "cmaes") {
+    if (optimizer.type == "baseline") {
+        if (algorithm.fixed_parameters.empty()) {
+            return std::make_unique<hpoea::core::BaselineOptimizer>();
+        }
+        return std::make_unique<hpoea::core::BaselineOptimizer>(algorithm.fixed_parameters);
+    }
+
+    if (!contains(pagmo_optimizer_type_ids, optimizer.type)) {
         add_unsupported_error(errors, "optimizer", optimizer.type);
         return nullptr;
     }
 
 #if defined(HPOEA_CONFIG_HAS_PAGMO)
-    auto cmaes = std::make_unique<hpoea::pagmo_wrappers::PagmoCmaesHyperOptimizer>();
-    if (auto search = build_search()) {
-        cmaes->set_search_space(std::move(search));
+    std::unique_ptr<hpoea::core::HyperOptimizerBase> hyper;
+    if (optimizer.type == "cmaes") {
+        hyper = std::make_unique<hpoea::pagmo_wrappers::PagmoCmaesHyperOptimizer>();
+    } else if (optimizer.type == "pso") {
+        hyper = std::make_unique<hpoea::pagmo_wrappers::PagmoPsoHyperOptimizer>();
+    } else if (optimizer.type == "simulated_annealing") {
+        hyper = std::make_unique<hpoea::pagmo_wrappers::PagmoSimulatedAnnealingHyperOptimizer>();
+    } else if (optimizer.type == "nelder_mead") {
+        hyper = std::make_unique<hpoea::pagmo_wrappers::PagmoNelderMeadHyperOptimizer>();
     }
-    return cmaes;
+    if (!hyper) {
+        add_unsupported_error(errors, "optimizer", optimizer.type);
+        return nullptr;
+    }
+    if (auto search = build_search()) {
+        hyper->set_search_space(std::move(search));
+    }
+    return hyper;
 #else
-    errors.push_back("optimizer type requires a Pagmo-enabled build: cmaes");
+    errors.push_back("optimizer type requires a Pagmo-enabled build: " + optimizer.type);
     return nullptr;
 #endif
 }
@@ -307,6 +282,33 @@ std::unique_ptr<hpoea::core::IHyperparameterOptimizer> make_optimizer(
 } // namespace
 
 namespace hpoea::cli {
+
+// same as the runtime search-space filtering
+// fixed and excluded parameters are not tuned
+std::optional<std::size_t> tuned_algorithm_dimension(const AlgorithmSpec &algorithm) {
+#if defined(HPOEA_CONFIG_HAS_PAGMO)
+    const auto factory = make_pagmo_algorithm_factory(algorithm.type);
+    if (!factory) {
+        return std::nullopt;
+    }
+    std::size_t dimension = 0;
+    for (const auto &descriptor : factory->parameter_space().descriptors()) {
+        if (algorithm.fixed_parameters.contains(descriptor.name)) {
+            continue;
+        }
+        const auto it = algorithm.search_parameters.find(descriptor.name);
+        if (it != algorithm.search_parameters.end() &&
+            it->second.mode == SearchParameterMode::Exclude) {
+            continue;
+        }
+        dimension += 1;
+    }
+    return dimension;
+#else
+    (void)algorithm;
+    return std::nullopt;
+#endif
+}
 
 const config::AlgorithmSpec *find_algorithm(const config::SuiteConfig &config,
                                             std::string_view id) noexcept {
@@ -364,7 +366,7 @@ DispatchResult make_dispatch_objects(const SuiteConfig &config,
         result.objects.problem = make_problem(*problem, result.errors);
         result.objects.algorithm_factory = make_algorithm_factory(*algorithm, result.errors);
         // make_optimizer tolerates a null factory
-        // so the optimizer error still surfaces
+        // so optimizer error still gets reported
         result.objects.optimizer = make_optimizer(
             *optimizer, *algorithm, result.objects.algorithm_factory.get(), result.errors);
     } catch (const std::exception &exception) {
