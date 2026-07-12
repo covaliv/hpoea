@@ -33,13 +33,30 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Install build tools and Pagmo2
+      # ubuntu's libpagmo-dev is built without NLopt
+      # so the nlopt wrapper cannot compile against it
+      - name: Install build tools and Pagmo2 dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake ninja-build libpagmo-dev
+          sudo apt-get install -y build-essential cmake ninja-build libboost-serialization-dev libeigen3-dev libnlopt-dev libnlopt-cxx-dev libtbb-dev
+
+      - name: Cache Pagmo2 install
+        id: pagmo-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/pagmo-install
+          key: pagmo-2.19.1-nlopt-eigen-${{ runner.os }}
+
+      - name: Build Pagmo2 with NLopt and Eigen3
+        if: steps.pagmo-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch v2.19.1 https://github.com/esa/pagmo2.git "$HOME/pagmo2-src"
+          cmake -S "$HOME/pagmo2-src" -B "$HOME/pagmo2-build" -G Ninja -DCMAKE_BUILD_TYPE=Release -DPAGMO_WITH_EIGEN3=ON -DPAGMO_WITH_NLOPT=ON -DCMAKE_INSTALL_PREFIX="$HOME/pagmo-install"
+          cmake --build "$HOME/pagmo2-build"
+          cmake --install "$HOME/pagmo2-build"
 
       - name: Configure Pagmo-enabled test build
-        run: cmake -S . -B build/hpoea-pagmo -G Ninja -DCMAKE_BUILD_TYPE=Release -DHPOEA_BUILD_TESTS=ON -DHPOEA_WITH_PAGMO=ON
+        run: cmake -S . -B build/hpoea-pagmo -G Ninja -DCMAKE_BUILD_TYPE=Release -DHPOEA_BUILD_TESTS=ON -DHPOEA_WITH_PAGMO=ON -DPagmo_DIR="$HOME/pagmo-install/lib/cmake/pagmo"
 
       - name: Build Pagmo-enabled test targets
         run: cmake --build build/hpoea-pagmo

@@ -73,7 +73,7 @@ int main() {
 
 
     {
-        // smoke every EA wrapper
+        // run every EA wrapper once
         // runs to Success and records its seed
         // reproducible
         // rejects pop=1

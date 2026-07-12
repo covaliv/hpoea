@@ -164,9 +164,7 @@ inline core::OptimizationResult run_population(
 
         population_size = get_param<std::int64_t>(configured_parameters, "population_size");
 
-        auto effective_parameters = configured_parameters;
         const auto generations = compute_generations(configured_parameters, budget, population_size);
-        effective_parameters.insert_or_assign("generations", static_cast<std::int64_t>(generations));
 
         const auto algo_seed = to_seed32(seed);
         const auto pop_seed = derive_seed32(seed, 0);
@@ -203,7 +201,9 @@ inline core::OptimizationResult run_population(
         auto budget_fields = compute_budget_fields(budget, actual_generations, population_size);
         result.requested_budget = budget_fields.requested_budget;
         result.effective_budget = budget_fields.effective_budget;
-        result.effective_parameters = std::move(effective_parameters);
+        // effective_parameters keeps configured values
+        // algorithm_usage holds actual work
+        result.effective_parameters = configured_parameters;
 
         if (generations == 0) {
             result.status = core::RunStatus::BudgetExceeded;

@@ -21,15 +21,6 @@
 
 namespace hpoea::pagmo_wrappers {
 
-// mirrors is_selectable_trial in random_search_optimizer.cpp
-// keep the two in sync
-[[nodiscard]] inline bool is_selectable_trial(const core::HyperparameterTrialRecord &trial) {
-  const auto status = trial.optimization_result.status;
-  return (status == core::RunStatus::Success ||
-          status == core::RunStatus::BudgetExceeded) &&
-         std::isfinite(trial.optimization_result.best_fitness);
-}
-
 struct HyperparameterTuningProblem {
   struct Context {
     const core::IEvolutionaryAlgorithmFactory *factory{nullptr};
@@ -220,7 +211,7 @@ struct HyperparameterTuningProblem {
       if (ctx.trials) {
         ctx.trials->push_back(record);
       }
-      if (is_selectable_trial(record) &&
+      if (core::is_selectable_trial(record) &&
           (!ctx.best_trial ||
            record.optimization_result.best_fitness <
                ctx.best_trial->optimization_result.best_fitness)) {
@@ -229,7 +220,7 @@ struct HyperparameterTuningProblem {
     }
 
     constexpr double FAILED_TRIAL_PENALTY = 1e20;
-    const auto fitness = std::isfinite(record.optimization_result.best_fitness)
+    const auto fitness = core::is_selectable_trial(record)
         ? record.optimization_result.best_fitness
         : FAILED_TRIAL_PENALTY;
     return pagmo::vector_double{fitness};

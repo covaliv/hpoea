@@ -463,7 +463,7 @@ int main() {
             hpoea::core::ProblemMetadata meta_{};
         };
 
-        ThrowAtNProblem problem(8);  // 8th evaluation throws so 7 completed
+        ThrowAtNProblem problem(8);  // 8th eval throws, 7 done
         hpoea::pagmo_wrappers::PagmoDifferentialEvolutionFactory factory;
         auto algo = factory.create();
         ParameterSet params;

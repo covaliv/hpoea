@@ -137,6 +137,16 @@ std::string serialize_budget_fields(const BudgetType &budget) {
     return oss.str();
 }
 
+std::string run_phase_to_string(hpoea::core::RunPhase phase) {
+    switch (phase) {
+    case hpoea::core::RunPhase::Tuning:
+        return "tuning";
+    case hpoea::core::RunPhase::Validation:
+        return "validation";
+    }
+    return "unknown";
+}
+
 std::string serialize_error_info(const std::optional<hpoea::core::ErrorInfo> &error_info) {
     if (!error_info.has_value()) {
         return "null";
@@ -216,7 +226,7 @@ void JsonlLogger::flush() {
 std::string serialize_run_record(const RunRecord &record) {
     std::ostringstream oss;
     oss << '{';
-    oss << "\"schema_version\":3,";
+    oss << "\"schema_version\":4,";
     oss << "\"experiment_id\":\"" << escape_json(record.experiment_id) << "\",";
     oss << "\"problem_id\":\"" << escape_json(record.problem_id) << "\",";
     oss << "\"evolutionary_algorithm\":" << serialize_algorithm_identity(record.evolutionary_algorithm) << ',';
@@ -228,6 +238,7 @@ std::string serialize_run_record(const RunRecord &record) {
     oss << "\"algorithm_parameters\":" << serialize_parameter_set(record.algorithm_parameters) << ',';
     oss << "\"optimizer_parameters\":" << serialize_parameter_set(record.optimizer_parameters) << ',';
     oss << "\"status\":\"" << escape_json(detail::run_status_to_string(record.status)) << "\",";
+    oss << "\"phase\":\"" << run_phase_to_string(record.phase) << "\",";
     oss << "\"objective_value\":" << serialize_double(record.objective_value) << ',';
     oss << "\"requested_budget\":" << serialize_budget_fields(record.requested_budget) << ',';
     oss << "\"effective_budget\":" << serialize_budget_fields(record.effective_budget) << ',';

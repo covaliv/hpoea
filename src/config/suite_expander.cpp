@@ -57,7 +57,8 @@ std::uint64_t derive_hashed_seed(const SuiteConfig &cfg,
                                  std::size_t repetition_index) {
     std::uint64_t state = 14695981039346656037ULL;
     state = fnv1a_append(state, "suite_seed");
-    state = fnv1a_append(state, cfg.suite_seed ? std::to_string(*cfg.suite_seed) : std::string{"0"});
+    // "unset" keeps explicit 0 distinct from missing seed
+    state = fnv1a_append(state, cfg.suite_seed ? std::to_string(*cfg.suite_seed) : std::string{"unset"});
     state = fnv1a_append(state, "experiment_id");
     state = fnv1a_append(state, exp.id);
     state = fnv1a_append(state, "problem_id");
@@ -236,6 +237,7 @@ private:
         record_output_name(*output_name, output_name_path);
         const auto algorithm_budget = budget_or_empty(exp.algorithm_budget);
         const auto optimizer_budget = budget_or_empty(exp.optimizer_budget);
+        const auto validation_repeats = exp.validation_repeats.value_or(config_.validation_repeats);
 
         for (std::size_t repetition_index = 0; repetition_index < repetitions; ++repetition_index) {
             ResolvedRunSpec run;
@@ -244,6 +246,7 @@ private:
             run.algorithm_id = exp.algorithm;
             run.optimizer_id = exp.optimizer;
             run.repetition_index = repetition_index;
+            run.validation_repeats = validation_repeats;
             run.seed = derive_seed(config_, exp, repetition_index);
             run.output_name = *output_name;
             run.run_id = *normalized_id + "__rep" + format_repetition_index(repetition_index);

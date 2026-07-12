@@ -65,6 +65,7 @@ public:
         hpoea::core::HyperparameterOptimizationResult out;
         out.status = result.status;
         out.best_objective = result.best_fitness;
+        out.best_parameters = algo_params;
         out.trials.push_back({algo_params, result});
         out.optimizer_usage.objective_calls = 1;
         out.optimizer_usage.iterations = 0;
@@ -609,13 +610,13 @@ int main() {
 
 
     {
-        hpoea::core::ParameterSet stamped;
-        stamped.emplace("clamped_marker", std::int64_t{42});
-        auto stamping_fn = [stamped](const hpoea::core::IEvolutionaryAlgorithmFactory &factory,
-                                     const hpoea::core::IProblem &problem,
-                                     const hpoea::core::Budget &,
-                                     const hpoea::core::Budget &algorithm_budget,
-                                     unsigned long seed) {
+        hpoea::core::ParameterSet marker_params;
+        marker_params.emplace("clamped_marker", std::int64_t{42});
+        auto marker_fn = [marker_params](const hpoea::core::IEvolutionaryAlgorithmFactory &factory,
+                                         const hpoea::core::IProblem &problem,
+                                         const hpoea::core::Budget &,
+                                         const hpoea::core::Budget &algorithm_budget,
+                                         unsigned long seed) {
             auto algo = factory.create();
             hpoea::core::ParameterSet algo_params;
             algo_params.emplace("generations", std::int64_t{2});
@@ -625,8 +626,8 @@ int main() {
             out.status = run_result.status;
             out.best_objective = run_result.best_fitness;
             out.trials.push_back({algo_params, run_result});
-            out.effective_optimizer_parameters = stamped;
-            out.message = "stamping optimize";
+            out.effective_optimizer_parameters = marker_params;
+            out.message = "marker optimize";
             return out;
         };
 
@@ -636,15 +637,15 @@ int main() {
         config.algorithm_budget.generations = 2u;
         config.optimizer_parameters = hpoea::core::ParameterSet{};
 
-        hpoea::tests_v2::StubHyperOptimizer stamping_stub(stamping_fn);
-        hpoea::tests_v2::CapturingLogger stamping_logger;
+        hpoea::tests_v2::StubHyperOptimizer marker_stub(marker_fn);
+        hpoea::tests_v2::CapturingLogger marker_logger;
         hpoea::core::SequentialExperimentManager manager;
-        auto result = manager.run_experiment(config, stamping_stub, factory, problem, stamping_logger);
+        auto result = manager.run_experiment(config, marker_stub, factory, problem, marker_logger);
         HPOEA_V2_CHECK(runner, result.optimizer_results.size() == 1u,
                        "effective-params experiment returns one result");
         HPOEA_V2_CHECK(runner, !result.optimizer_results.empty() &&
                                    result.optimizer_results[0].effective_optimizer_parameters.contains("clamped_marker"),
-                       "manager preserves optimizer-stamped effective_optimizer_parameters");
+                       "manager preserves effective_optimizer_parameters from the optimizer");
     }
 
 

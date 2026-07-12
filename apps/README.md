@@ -49,7 +49,7 @@ In a Pagmo-enabled build, `run` can execute supported configs:
 ./build/hpoea-pagmo/apps/hpoea run examples/configs/basic_experiment.toml
 ```
 
-For now, `run` supports configs that use `sphere`, `de`, and either `cmaes` or `random_search`.
+`run` supports the built-in benchmark problems (`sphere`, `rosenbrock`, `rastrigin`, `ackley`, `griewank`, `schwefel`, `zakharov`, `styblinski_tang`, `knapsack`), the algorithms `de`, `sade`, `pso`, `sga`, and `de1220`, and the optimizers `random_search`, `baseline`, `cmaes`, `pso`, `simulated_annealing`, and `nelder_mead`.
 
 ## Introductory examples
 

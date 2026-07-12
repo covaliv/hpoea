@@ -398,7 +398,8 @@ private:
         if (!table) {
             return;
         }
-        diagnose_unknown_keys(*table, "suite", {"name", "output_dir", "suite_seed", "repetitions"});
+        diagnose_unknown_keys(*table, "suite",
+                              {"name", "output_dir", "suite_seed", "repetitions", "validation_repeats"});
         if (const auto value = string_field(*table, "name", "suite.name", true)) {
             config_.name = *value;
         }
@@ -410,6 +411,10 @@ private:
         }
         if (const auto value = nonnegative_integer_field<std::size_t>(*table, "repetitions", "suite.repetitions")) {
             config_.repetitions = *value;
+        }
+        if (const auto value = nonnegative_integer_field<std::size_t>(*table, "validation_repeats",
+                                                                      "suite.validation_repeats")) {
+            config_.validation_repeats = *value;
         }
     }
 
@@ -541,7 +546,8 @@ private:
     void parse_experiment(const toml::table &table,
                           std::string_view path) {
         diagnose_unknown_keys(table, path, {"id", "problem", "algorithm", "optimizer", "repetitions",
-                                            "seed", "output_name", "algorithm_budget", "optimizer_budget"});
+                                            "validation_repeats", "seed", "output_name",
+                                            "algorithm_budget", "optimizer_budget"});
         ExperimentSpec experiment;
         if (const auto value = string_field(table, "id", join_path(path, "id"), true)) {
             experiment.id = *value;
@@ -557,6 +563,10 @@ private:
         }
         if (const auto value = nonnegative_integer_field<std::size_t>(table, "repetitions", join_path(path, "repetitions"))) {
             experiment.repetitions = *value;
+        }
+        if (const auto value = nonnegative_integer_field<std::size_t>(table, "validation_repeats",
+                                                                      join_path(path, "validation_repeats"))) {
+            experiment.validation_repeats = *value;
         }
         if (const auto value = nonnegative_integer_field<std::uint64_t>(table, "seed", join_path(path, "seed"))) {
             experiment.seed = *value;

@@ -5,6 +5,7 @@ name = "basic_experiment"
 output_dir = "results/basic_experiment"
 suite_seed = 123456
 repetitions = 2
+validation_repeats = 5
 
 [problems.sphere10]
 type = "sphere"

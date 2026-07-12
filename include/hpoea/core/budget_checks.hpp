@@ -10,7 +10,7 @@ namespace hpoea::core {
 
 namespace detail {
 
-// shared by optimizer and algorithm budget checks so messages stay identical
+// shared by optimizer and algorithm budget checks so messages match
 inline void apply_budget_status_counters(const Budget &budget,
                                          std::chrono::milliseconds wall_time,
                                          std::size_t function_evaluations,

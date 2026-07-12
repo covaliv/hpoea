@@ -18,6 +18,9 @@ struct ExperimentConfig {
     // plain threads, not pagmo islands
     std::size_t max_parallel_trials{1};
     std::size_t trials_per_optimizer{1};
+    // held out re runs of best parameters
+    // 0 disables
+    std::size_t validation_repeats{0};
     Budget algorithm_budget{};
     Budget optimizer_budget{};
     std::optional<ParameterSet> optimizer_parameters;

@@ -12,6 +12,11 @@
 
 namespace hpoea::core {
 
+enum class RunPhase {
+    Tuning,
+    Validation
+};
+
 struct RunRecord {
     std::string experiment_id;
     std::string problem_id;
@@ -20,6 +25,7 @@ struct RunRecord {
     ParameterSet algorithm_parameters;
     ParameterSet optimizer_parameters;
     RunStatus status{RunStatus::InternalError};
+    RunPhase phase{RunPhase::Tuning};
     double objective_value{0.0};
     Budget requested_budget{};
     EffectiveBudget effective_budget{};
@@ -70,7 +76,7 @@ private:
 
 namespace detail {
 
-// in detail so a TU-local run_status_to_string never collides
+// keeps TU local run_status_to_string from colliding
 [[nodiscard]] std::string run_status_to_string(RunStatus status);
 
 } // namespace detail

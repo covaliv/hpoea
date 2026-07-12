@@ -79,6 +79,7 @@ struct ExperimentSpec {
     std::string algorithm;
     std::string optimizer;
     std::optional<std::size_t> repetitions;
+    std::optional<std::size_t> validation_repeats;
     std::optional<std::uint64_t> seed;
     std::optional<std::string> output_name;
     std::optional<BudgetConfig> algorithm_budget;
@@ -92,6 +93,7 @@ struct ResolvedRunSpec {
     std::string algorithm_id;
     std::string optimizer_id;
     std::size_t repetition_index{0};
+    std::size_t validation_repeats{0};
     std::uint64_t seed{0};
     std::string output_name;
     std::filesystem::path planned_output_path;
@@ -105,6 +107,7 @@ struct SuiteConfig {
     std::filesystem::path output_dir;
     std::optional<std::uint64_t> suite_seed;
     std::size_t repetitions{1};
+    std::size_t validation_repeats{0};
     std::vector<ProblemSpec> problems;
     std::vector<AlgorithmSpec> algorithms;
     std::vector<OptimizerSpec> optimizers;

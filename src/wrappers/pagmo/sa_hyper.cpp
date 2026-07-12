@@ -109,6 +109,10 @@ PagmoSimulatedAnnealingHyperOptimizer::optimize(
             std::chrono::steady_clock::time_point start,
             HyperparameterTuningProblem::Context &ctx) -> HyperEvolveOutcome {
 
+            if (starves_initial_population(budget, 1)) {
+                return starved_outcome(configured_parameters_, "iterations", 1, "initial evaluation");
+            }
+
             const auto ts = get_param<double>(configured_parameters_, "ts");
             const auto tf = get_param<double>(configured_parameters_, "tf");
             const auto start_range = get_param<double>(configured_parameters_, "start_range");
@@ -149,7 +153,7 @@ PagmoSimulatedAnnealingHyperOptimizer::optimize(
                 dim);
 
             if (budget.function_evaluations) {
-                // reserve initial-population eval so an exact budget isn't overshot by one
+                // reserve initial pop eval so exact budget not overshot by one
                 const auto available = *budget.function_evaluations > 1
                     ? *budget.function_evaluations - 1 : std::size_t{0};
                 auto max_evolves = static_cast<unsigned>(std::min(

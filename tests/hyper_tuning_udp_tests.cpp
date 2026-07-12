@@ -654,9 +654,9 @@ int main() {
         (void)udp_mixed.fitness({0.3});
 
         HPOEA_V2_CHECK(runner, c->trials->size() == 3u, "mixed_selection: three trials recorded");
-        HPOEA_V2_CHECK(runner, hpoea::pagmo_wrappers::is_selectable_trial((*c->trials)[1]),
+        HPOEA_V2_CHECK(runner, hpoea::core::is_selectable_trial((*c->trials)[1]),
                        "mixed_selection: finite BudgetExceeded trial is selectable");
-        HPOEA_V2_CHECK(runner, !hpoea::pagmo_wrappers::is_selectable_trial((*c->trials)[2]),
+        HPOEA_V2_CHECK(runner, !hpoea::core::is_selectable_trial((*c->trials)[2]),
                        "mixed_selection: finite FailedEvaluation trial is not selectable");
         auto best = c->get_best_trial();
         HPOEA_V2_CHECK(runner, best.has_value() &&

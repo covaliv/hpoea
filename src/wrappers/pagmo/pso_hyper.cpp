@@ -109,6 +109,11 @@ core::HyperparameterOptimizationResult PagmoPsoHyperOptimizer::optimize(
             const auto pop_size = static_cast<pagmo::population::size_type>(
                 std::max(dim * 4, dim + 1));
 
+            if (starves_initial_population(budget, static_cast<std::size_t>(pop_size))) {
+                return starved_outcome(configured_parameters_, "generations",
+                                       static_cast<std::size_t>(pop_size), "initial population");
+            }
+
             const auto configured_generations =
                 get_param<std::int64_t>(configured_parameters_, "generations");
             const auto generations = clamp_hyper_generations(

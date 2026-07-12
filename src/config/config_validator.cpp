@@ -7,13 +7,17 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 
 namespace {
 
+using hpoea::config::AlgorithmSpec;
 using hpoea::config::BudgetConfig;
 using hpoea::config::ExperimentSpec;
 using hpoea::config::ExpansionDiagnosticSeverity;
@@ -33,6 +37,40 @@ using hpoea::config::detail::join_path;
 constexpr std::array<std::string_view, 1> core_optimizer_type_ids{
     "random_search"
 };
+
+// fixed value or smallest value search can pick
+[[nodiscard]] std::optional<std::pair<std::int64_t, const char *>>
+smallest_population(const AlgorithmSpec &algorithm) {
+    const auto fixed = algorithm.fixed_parameters.find("population_size");
+    if (fixed != algorithm.fixed_parameters.end()) {
+        if (const auto *value = std::get_if<std::int64_t>(&fixed->second)) {
+            return std::pair{*value, "fixed"};
+        }
+        return std::nullopt;
+    }
+    const auto searched = algorithm.search_parameters.find("population_size");
+    if (searched == algorithm.search_parameters.end()) {
+        return std::nullopt;
+    }
+    const auto &spec = searched->second;
+    if (spec.mode == SearchParameterMode::IntegerRange && spec.integer_range.has_value()) {
+        return std::pair{spec.integer_range->lower, "smallest searched"};
+    }
+    if (spec.mode != SearchParameterMode::Choice) {
+        return std::nullopt;
+    }
+    std::optional<std::int64_t> smallest;
+    for (const auto &choice : spec.choices) {
+        const auto *value = std::get_if<std::int64_t>(&choice);
+        if (value && (!smallest.has_value() || *value < *smallest)) {
+            smallest = *value;
+        }
+    }
+    if (!smallest.has_value()) {
+        return std::nullopt;
+    }
+    return std::pair{*smallest, "smallest searched"};
+}
 
 class Validator {
 public:
@@ -236,6 +274,39 @@ private:
             add_error(join_path(base_path, "optimizer"),
                       "experiment '" + experiment.id + "': unknown optimizer '" + experiment.optimizer + "'");
         }
+        warn_starved_algorithm_budget(experiment, base_path);
+    }
+
+    [[nodiscard]] const AlgorithmSpec *find_algorithm_spec(const std::string &id) const noexcept {
+        for (const auto &algorithm : config_.algorithms) {
+            if (algorithm.id == id) {
+                return &algorithm;
+            }
+        }
+        return nullptr;
+    }
+
+    void warn_starved_algorithm_budget(const ExperimentSpec &experiment,
+                                       const std::string &base_path) {
+        if (!experiment.algorithm_budget.has_value() ||
+            !experiment.algorithm_budget->function_evaluations.has_value()) {
+            return;
+        }
+        const auto *algorithm = find_algorithm_spec(experiment.algorithm);
+        if (!algorithm) {
+            return;
+        }
+        const auto population = smallest_population(*algorithm);
+        const auto budget = *experiment.algorithm_budget->function_evaluations;
+        if (!population.has_value() || population->first <= 0 ||
+            static_cast<std::uint64_t>(population->first) <= budget) {
+            return;
+        }
+        add_warning(join_path(join_path(base_path, "algorithm_budget"), "function_evaluations"),
+                    "algorithm_budget.function_evaluations (" + std::to_string(budget) +
+                        ") is below the " + population->second + " population_size (" +
+                        std::to_string(population->first) + ") of algorithm '" + algorithm->id +
+                        "'; every trial overshoots the budget and no trial is selectable");
     }
 
     void validate_budget(const BudgetConfig &budget,

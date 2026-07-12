@@ -4,18 +4,23 @@
 #include "hpoea/config/config_validator.hpp"
 #include "hpoea/config/suite_expander.hpp"
 #include "hpoea/core/experiment.hpp"
+#include "hpoea/core/hyperparameter_optimizer.hpp"
 #include "hpoea/core/logging.hpp"
 
 #include <cctype>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -50,6 +55,12 @@ void print_help(std::ostream &out) {
         << "  validate <config.toml>  validate a config for this build\n"
         << "  plan <config.toml>      preview expanded runs without executing\n"
         << "  run <config.toml>       execute supported config runs\n"
+        << "\n"
+        << "run options:\n"
+        << "  --only <id[,id...]>     run only the named experiments\n"
+        << "  --prune                 remove experiment outputs no longer in the plan\n"
+        << "  --resume                skip experiments whose output already exists\n"
+        << "  --strict                exit nonzero when a cell is degraded or empty\n"
         << "\n"
         << "options:\n"
         << "  --help                  show this help\n"
@@ -196,6 +207,7 @@ int run_plan(const std::filesystem::path &path) {
     std::cout << "config: " << path.generic_string() << '\n';
     std::cout << "runs: " << expansion.runs.size() << '\n';
 
+    bool plan_ok = true;
     for (const auto &run : expansion.runs) {
         const auto dispatch = hpoea::cli::annotate_run_dispatch(*config, run);
 
@@ -212,10 +224,21 @@ int run_plan(const std::filesystem::path &path) {
                 std::cout << "  tunable parameters: " << *tunable << '\n';
             }
         }
-        std::cout << "  runnable: " << (dispatch.runnable ? "yes" : "no") << '\n';
+        bool runnable = dispatch.runnable;
+        if (runnable) {
+            auto objects = hpoea::cli::make_dispatch_objects(*config, run);
+            if (!objects.ok()) {
+                runnable = false;
+                plan_ok = false;
+                for (const auto &error : objects.errors) {
+                    std::cerr << "error: run " << run.run_id << ": " << error << '\n';
+                }
+            }
+        }
+        std::cout << "  runnable: " << (runnable ? "yes" : "no") << '\n';
     }
 
-    return 0;
+    return plan_ok ? 0 : 1;
 }
 
 std::optional<hpoea::core::ExperimentConfig> make_experiment_config(
@@ -288,9 +311,120 @@ bool is_run_output_file(const std::filesystem::path &path) {
     return true;
 }
 
+struct RunOptions {
+    std::set<std::string> only;
+    bool prune{false};
+    bool strict{false};
+    bool resume{false};
+};
+
+struct RunTally {
+    std::size_t ran{0};
+    std::size_t skipped{0};
+    std::size_t success{0};
+    std::size_t budget_exceeded{0};
+    std::size_t failed{0};
+    std::size_t empty{0};
+    std::size_t no_selectable{0};
+};
+
+std::string json_escape(std::string_view text) {
+    std::string out;
+    out.reserve(text.size());
+    for (const char c : text) {
+        if (c == '"' || c == '\\') {
+            out += '\\';
+        }
+        out += c;
+    }
+    return out;
+}
+
+std::string manifest_row(const hpoea::config::ResolvedRunSpec &run,
+                         std::string_view status,
+                         std::size_t records,
+                         std::size_t selectable) {
+    std::ostringstream oss;
+    oss << '{'
+        << "\"run_id\":\"" << json_escape(run.run_id) << "\","
+        << "\"experiment_id\":\"" << json_escape(run.experiment_id) << "\","
+        << "\"problem_id\":\"" << json_escape(run.problem_id) << "\","
+        << "\"algorithm_id\":\"" << json_escape(run.algorithm_id) << "\","
+        << "\"optimizer_id\":\"" << json_escape(run.optimizer_id) << "\","
+        << "\"repetition\":" << run.repetition_index << ','
+        << "\"output\":\"" << json_escape(run.planned_output_path.generic_string()) << "\","
+        << "\"status\":\"" << json_escape(status) << "\","
+        << "\"records\":" << records << ','
+        << "\"selectable\":" << selectable
+        << '}';
+    return oss.str();
+}
+
+// run_id is always first field of a self written row
+std::string manifest_run_id(const std::string &row) {
+    constexpr std::string_view prefix{"{\"run_id\":\""};
+    if (!row.starts_with(prefix)) {
+        return {};
+    }
+    std::string id;
+    for (auto i = prefix.size(); i < row.size(); ++i) {
+        if (row[i] == '\\' && i + 1 < row.size()) {
+            id += row[++i];
+        } else if (row[i] == '"') {
+            return id;
+        } else {
+            id += row[i];
+        }
+    }
+    return {};
+}
+
+// partial run keeps rows of cells it did not touch
+// rows leave manifest only when they leave plan
+void write_run_manifest(const std::filesystem::path &output_dir,
+                        const std::vector<hpoea::config::ResolvedRunSpec> &planned_runs,
+                        const std::map<std::string, std::string> &fresh_rows,
+                        const std::map<std::string, std::string> &skip_rows) {
+    if (fresh_rows.empty() && skip_rows.empty()) {
+        return;
+    }
+    const auto manifest_path = output_dir / "summary.jsonl";
+    std::map<std::string, std::string> rows;
+    {
+        std::ifstream existing(manifest_path);
+        std::string line;
+        while (std::getline(existing, line)) {
+            if (auto id = manifest_run_id(line); !id.empty()) {
+                rows.insert_or_assign(std::move(id), line);
+            }
+        }
+    }
+    for (const auto &[id, row] : skip_rows) {
+        // previous row describes untouched output better
+        rows.emplace(id, row);
+    }
+    for (const auto &[id, row] : fresh_rows) {
+        rows.insert_or_assign(id, row);
+    }
+    std::error_code ec;
+    std::filesystem::create_directories(output_dir, ec);
+    std::ofstream stream(manifest_path, std::ios::out | std::ios::trunc);
+    if (!stream) {
+        std::cerr << "warning: could not write run manifest under " << output_dir.generic_string() << '\n';
+        return;
+    }
+    for (const auto &run : planned_runs) {
+        const auto row = rows.find(run.run_id);
+        if (row != rows.end()) {
+            stream << row->second << '\n';
+        }
+    }
+}
+
 // a config change can leave stale run files behind
 void remove_stale_outputs(const hpoea::config::SuiteConfig &config,
-                               const std::vector<PreparedRun> &prepared_runs) {
+                               const std::vector<PreparedRun> &prepared_runs,
+                               const RunOptions &options) {
     std::set<std::filesystem::path> planned_files;
     std::set<std::filesystem::path> planned_dirs;
     for (const auto &prepared : prepared_runs) {
@@ -315,12 +449,21 @@ void remove_stale_outputs(const hpoea::config::SuiteConfig &config,
         }
     }
 
+    if (!options.only.empty()) {
+        return;
+    }
+
     const auto experiments_root = (config.output_dir / "experiments").lexically_normal();
     if (!std::filesystem::is_directory(experiments_root)) {
         return;
     }
     for (const auto &entry : std::filesystem::directory_iterator(experiments_root)) {
         if (!entry.is_directory() || planned_dirs.contains(entry.path().lexically_normal())) {
+            continue;
+        }
+        if (!options.prune) {
+            std::cerr << "warning: stale experiment output not in current plan: "
+                      << entry.path().generic_string() << " (use --prune to remove)\n";
             continue;
         }
         for (const auto &stale : std::filesystem::directory_iterator(entry.path())) {
@@ -339,7 +482,7 @@ void remove_stale_outputs(const hpoea::config::SuiteConfig &config,
     }
 }
 
-int run_config(const std::filesystem::path &path) {
+int run_config(const std::filesystem::path &path, const RunOptions &options) {
     const auto config = parse_suite_config(path);
     if (!config.has_value()) {
         return 1;
@@ -358,10 +501,26 @@ int run_config(const std::filesystem::path &path) {
         return 1;
     }
 
+    if (!options.only.empty()) {
+        std::set<std::string> present;
+        for (const auto &run : expansion.runs) {
+            present.insert(run.experiment_id);
+        }
+        for (const auto &id : options.only) {
+            if (!present.contains(id)) {
+                std::cerr << "error: --only names unknown experiment: " << id << '\n';
+                return 1;
+            }
+        }
+    }
+
     std::vector<PreparedRun> prepared_runs;
     prepared_runs.reserve(expansion.runs.size());
     bool dispatch_ok = true;
     for (const auto &run : expansion.runs) {
+        if (!options.only.empty() && !options.only.contains(run.experiment_id)) {
+            continue;
+        }
         auto dispatch = hpoea::cli::make_dispatch_objects(*config, run);
         if (!dispatch.ok()) {
             dispatch_ok = false;
@@ -377,16 +536,30 @@ int run_config(const std::filesystem::path &path) {
     }
 
     try {
-        remove_stale_outputs(*config, prepared_runs);
+        remove_stale_outputs(*config, prepared_runs, options);
     } catch (const std::exception &exception) {
         std::cerr << "error: " << exception.what() << '\n';
         return 1;
     }
 
+    RunTally tally;
+    std::map<std::string, std::string> fresh_rows;
+    std::map<std::string, std::string> skip_rows;
+
     bool had_failed_status = false;
     try {
         for (auto &prepared : prepared_runs) {
-            auto experiment_config = make_experiment_config(*config, prepared.run);
+            const auto &run = prepared.run;
+
+            if (options.resume && std::filesystem::exists(run.planned_output_path) &&
+                !std::filesystem::is_empty(run.planned_output_path)) {
+                std::cout << "skipped: " << run.run_id << " (resume; output exists)\n";
+                tally.skipped += 1;
+                skip_rows.emplace(run.run_id, manifest_row(run, "skipped", 0, 0));
+                continue;
+            }
+
+            auto experiment_config = make_experiment_config(*config, run);
             if (!experiment_config.has_value()) {
                 return 1;
             }
@@ -410,27 +583,50 @@ int run_config(const std::filesystem::path &path) {
                     logger);
                 records_written = logger.records_written();
             }
+            tally.ran += 1;
 
-            std::cout << "ran: " << prepared.run.run_id << '\n';
+            std::cout << "ran: " << run.run_id << '\n';
             std::cout << "  output: " << experiment_config->log_file_path.generic_string() << '\n';
             std::cout << "  optimizer_runs: " << result.optimizer_results.size() << '\n';
             std::cout << "  records: " << records_written << '\n';
+
+            hpoea::core::RunStatus cell_status = hpoea::core::RunStatus::InternalError;
+            std::size_t selectable = 0;
             for (const auto &optimizer_result : result.optimizer_results) {
-                const auto status = hpoea::core::detail::run_status_to_string(optimizer_result.status);
-                std::cout << "  status: " << status << '\n';
+                cell_status = optimizer_result.status;
+                std::cout << "  status: " << hpoea::core::detail::run_status_to_string(optimizer_result.status) << '\n';
                 if (is_command_failure_status(optimizer_result.status)) {
                     had_failed_status = true;
                 }
+                for (const auto &trial : optimizer_result.trials) {
+                    if (hpoea::core::is_selectable_trial(trial)) {
+                        selectable += 1;
+                    }
+                }
             }
 
+            if (cell_status == hpoea::core::RunStatus::Success) {
+                tally.success += 1;
+            } else if (cell_status == hpoea::core::RunStatus::BudgetExceeded) {
+                tally.budget_exceeded += 1;
+            } else {
+                tally.failed += 1;
+            }
+            if (selectable == 0) {
+                tally.no_selectable += 1;
+            }
+            fresh_rows.insert_or_assign(run.run_id, manifest_row(
+                run, hpoea::core::detail::run_status_to_string(cell_status), records_written, selectable));
+
             if (records_written == 0) {
+                tally.empty += 1;
                 std::filesystem::remove(experiment_config->log_file_path);
-                std::cerr << "warning: run " << prepared.run.run_id
+                std::cerr << "warning: run " << run.run_id
                           << " produced no records; removed empty output "
                           << experiment_config->log_file_path.generic_string() << '\n';
                 for (const auto &optimizer_result : result.optimizer_results) {
                     if (!optimizer_result.message.empty()) {
-                        std::cerr << "warning: run " << prepared.run.run_id << ": "
+                        std::cerr << "warning: run " << run.run_id << ": "
                                   << optimizer_result.message << '\n';
                     }
                 }
@@ -439,7 +635,7 @@ int run_config(const std::filesystem::path &path) {
                 // so degraded runs must at least reach stderr
                 for (const auto &optimizer_result : result.optimizer_results) {
                     if (optimizer_result.status != hpoea::core::RunStatus::Success) {
-                        std::cerr << "warning: run " << prepared.run.run_id << ": "
+                        std::cerr << "warning: run " << run.run_id << ": "
                                   << hpoea::core::detail::run_status_to_string(optimizer_result.status);
                         if (!optimizer_result.message.empty()) {
                             std::cerr << ": " << optimizer_result.message;
@@ -453,7 +649,7 @@ int run_config(const std::filesystem::path &path) {
                         }
                     }
                     if (failed_validations > 0) {
-                        std::cerr << "warning: run " << prepared.run.run_id
+                        std::cerr << "warning: run " << run.run_id
                                   << ": failed validation runs: " << failed_validations << '\n';
                     }
                 }
@@ -464,7 +660,24 @@ int run_config(const std::filesystem::path &path) {
         return 1;
     }
 
-    return had_failed_status ? 1 : 0;
+    write_run_manifest(config->output_dir, expansion.runs, fresh_rows, skip_rows);
+
+    std::cout << "suite summary:\n";
+    std::cout << "  cells: " << prepared_runs.size() << "  ran: " << tally.ran
+              << "  skipped: " << tally.skipped << '\n';
+    std::cout << "  success: " << tally.success << "  budget_exceeded: " << tally.budget_exceeded
+              << "  failed: " << tally.failed << '\n';
+    if (tally.empty > 0 || tally.no_selectable > 0) {
+        std::cout << "  empty: " << tally.empty << "  no selectable best: " << tally.no_selectable << '\n';
+    }
+
+    if (had_failed_status) {
+        return 1;
+    }
+    if (options.strict && (tally.budget_exceeded > 0 || tally.empty > 0 || tally.no_selectable > 0)) {
+        return 1;
+    }
+    return 0;
 }
 
 int require_single_config_arg(int argc,
@@ -477,6 +690,48 @@ int require_single_config_arg(int argc,
         return usage_error("too many arguments for command: " + std::string{argv[1]});
     }
     return handler(std::filesystem::path{argv[2]});
+}
+
+void split_experiment_ids(std::string_view text, std::set<std::string> &out) {
+    std::istringstream ids{std::string{text}};
+    std::string id;
+    while (std::getline(ids, id, ',')) {
+        if (!id.empty()) {
+            out.insert(id);
+        }
+    }
+}
+
+int parse_run_options(int argc, char **argv, std::filesystem::path &path, RunOptions &options) {
+    bool have_path = false;
+    for (int i = 2; i < argc; ++i) {
+        const std::string_view arg{argv[i]};
+        if (arg == "--prune") {
+            options.prune = true;
+        } else if (arg == "--strict") {
+            options.strict = true;
+        } else if (arg == "--resume") {
+            options.resume = true;
+        } else if (arg == "--only") {
+            if (i + 1 >= argc) {
+                return usage_error("--only needs a comma-separated list of experiment ids");
+            }
+            split_experiment_ids(argv[++i], options.only);
+        } else if (arg.starts_with("--only=")) {
+            split_experiment_ids(arg.substr(7), options.only);
+        } else if (arg.starts_with('-')) {
+            return usage_error("unknown option for run: " + std::string{arg});
+        } else if (!have_path) {
+            path = std::filesystem::path{arg};
+            have_path = true;
+        } else {
+            return usage_error("too many arguments for command: run");
+        }
+    }
+    if (!have_path) {
+        return usage_error("missing config path");
+    }
+    return 0;
 }
 
 } // namespace
@@ -502,7 +757,12 @@ int main(int argc, char **argv) {
         return require_single_config_arg(argc, argv, run_plan);
     }
     if (command == "run") {
-        return require_single_config_arg(argc, argv, run_config);
+        std::filesystem::path path;
+        RunOptions options;
+        if (const auto parsed = parse_run_options(argc, argv, path, options); parsed != 0) {
+            return parsed;
+        }
+        return run_config(path, options);
     }
 
     return usage_error("unknown command: " + std::string{command});

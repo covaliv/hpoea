@@ -134,7 +134,8 @@ int main() {
 
     hpoea::core::Budget algo_budget;
     algo_budget.generations = 5u;
-    algo_budget.function_evaluations = 500u;
+    // covers largest tunable DE pop so no candidate overspends
+    algo_budget.function_evaluations = 4000u;
 
     hpoea::core::Budget opt_budget;
     opt_budget.generations = 5u;
@@ -142,7 +143,7 @@ int main() {
 
 
     {
-        // smoke each hyper optimizer
+        // run each hyper optimizer once
         // runs and records its seed
         // accounts trials
         // reproducible
@@ -276,7 +277,7 @@ int main() {
         const auto eff = result.effective_optimizer_parameters.find("generations");
         HPOEA_V2_CHECK(runner, eff != result.effective_optimizer_parameters.end() &&
                                   std::get<std::int64_t>(eff->second) == 1,
-                       "CMA-ES effective_optimizer_parameters stamps clamped generations (1), not raw (2)");
+                       "CMA-ES effective_optimizer_parameters records clamped generations (1), not raw (2)");
     }
 
 
@@ -335,7 +336,7 @@ int main() {
         // a bound run spends exactly the budget
         hpoea::pagmo_wrappers::PagmoNelderMeadHyperOptimizer optimizer;
         hpoea::core::ParameterSet params;
-        // large so the budget binds
+        // large value makes budget bind
         // not the config
         params.emplace("max_fevals", std::int64_t{1000});
 

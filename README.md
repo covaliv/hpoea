@@ -112,7 +112,7 @@ In a Pagmo-enabled build, the CLI can run the supported built-in path:
 ./build/hpoea-pagmo/apps/hpoea run examples/configs/basic_experiment.toml
 ```
 
-For now, `run` supports configs that use `sphere`, `de`, and either `cmaes` or `random_search`.
+`run` supports the built-in benchmark problems (`sphere`, `rosenbrock`, `rastrigin`, `ackley`, `griewank`, `schwefel`, `zakharov`, `styblinski_tang`, `knapsack`), the algorithms `de`, `sade`, `pso`, `sga`, and `de1220`, and the optimizers `random_search`, `baseline`, `cmaes`, `pso`, `simulated_annealing`, and `nelder_mead`.
 
 The helper script provides the same checks. It runs both the core and the
 Pagmo-enabled flows by default; use `--core-only` to skip Pagmo:
@@ -184,10 +184,10 @@ The full mental model is in [docs/reference.md#core-concepts](docs/reference.md#
 
 ## Experiment records
 
-Repeatable experiment records include the source snapshot, compiler, CMake version, dependency versions, seed, budgets, command line, and JSONL output path.
+Repeatability takes two parts: the JSONL run records carry the identities, parameters, budgets, seeds, status, and phase, while the source snapshot, compiler, CMake version, dependency versions, and command line are not in the records and must be captured with the configuration.
 
 Inner algorithm budgets and outer optimizer budgets are separate. Fixed seeds make repeated comparisons stable.
 
-JSONL logs append to the target file. A clean run starts with a new or empty log file.
+JSONL logs append to the target file. `hpoea run` replaces planned run files and removes stale `run-NNN.jsonl` files inside planned experiment directories. Experiment directories the plan no longer contains get a warning; `hpoea run --prune` removes them.
 
 More reproducibility details are in [docs/reference.md#reproducibility-and-benchmarking](docs/reference.md#reproducibility-and-benchmarking).

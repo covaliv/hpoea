@@ -215,16 +215,10 @@ void mark_non_finite_success(hpoea::core::OptimizationResult &result) {
     }
 }
 
-bool is_selectable_trial(const hpoea::core::HyperparameterTrialRecord &trial) {
-    const auto status = trial.optimization_result.status;
-    return (status == hpoea::core::RunStatus::Success || status == hpoea::core::RunStatus::BudgetExceeded) &&
-           std::isfinite(trial.optimization_result.best_fitness);
-}
-
 void fill_success_result(hpoea::core::HyperparameterOptimizationResult &result) {
     auto best = result.trials.end();
     for (auto it = result.trials.begin(); it != result.trials.end(); ++it) {
-        if (!is_selectable_trial(*it)) {
+        if (!hpoea::core::is_selectable_trial(*it)) {
             continue;
         }
         if (best == result.trials.end() ||

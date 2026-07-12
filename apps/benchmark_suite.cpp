@@ -34,7 +34,7 @@ struct Benchmark {
     std::size_t trials;
 };
 
-// fixed seed so benchmark runs are reproducible
+// fixed seed keeps benchmark runs reproducible
 constexpr unsigned long benchmark_seed = 1729;
 // function_evaluations is the only budget we can compare across optimizers
 constexpr std::size_t optimizer_fevals = 240;

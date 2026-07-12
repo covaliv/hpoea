@@ -4,6 +4,7 @@
 #include "hpoea/core/parameters.hpp"
 #include "hpoea/core/types.hpp"
 
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -28,11 +29,27 @@ struct HyperparameterTrialRecord {
     std::size_t trial_index{0};
 };
 
+// trials over feval budget cannot become best
+[[nodiscard]] inline bool is_selectable_trial(const HyperparameterTrialRecord &trial) {
+    const auto &result = trial.optimization_result;
+    if (result.status != RunStatus::Success && result.status != RunStatus::BudgetExceeded) {
+        return false;
+    }
+    if (!std::isfinite(result.best_fitness)) {
+        return false;
+    }
+    const auto &feval_budget = result.requested_budget.function_evaluations;
+    return !feval_budget.has_value() ||
+           result.algorithm_usage.function_evaluations <= *feval_budget;
+}
+
 struct HyperparameterOptimizationResult {
     RunStatus status{RunStatus::InternalError};
     ParameterSet best_parameters;
     double best_objective{std::numeric_limits<double>::infinity()};
     std::vector<HyperparameterTrialRecord> trials;
+    // held out re runs of best_parameters on fresh seeds
+    std::vector<OptimizationResult> validation_runs;
     OptimizerRunUsage optimizer_usage{};
     std::optional<ErrorInfo> error_info;
     unsigned long seed{0};

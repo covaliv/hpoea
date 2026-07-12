@@ -95,7 +95,7 @@ int main() {
     record.message = "ok";
 
     const auto serialized = serialize_run_record(record);
-    HPOEA_V2_CHECK(runner, serialized.find("\"schema_version\":3") != std::string::npos,
+    HPOEA_V2_CHECK(runner, serialized.find("\"schema_version\":4") != std::string::npos,
                    "schema_version serialized");
     HPOEA_V2_CHECK(runner, serialized.find("\"experiment_id\":\"exp_v2\"") != std::string::npos,
                    "experiment_id serialized");
@@ -199,7 +199,7 @@ int main() {
         rt.message = "round-trip verification";
 
         const auto rt_json = serialize_run_record(rt);
-        HPOEA_V2_CHECK(runner, count_occurrences(rt_json, "\"schema_version\":3") == 1u,
+        HPOEA_V2_CHECK(runner, count_occurrences(rt_json, "\"schema_version\":4") == 1u,
                         "rt: schema_version present exactly once");
         HPOEA_V2_CHECK(runner, count_occurrences(rt_json, "\"experiment_id\":\"round_trip_test_42\"") == 1u,
                         "rt: experiment_id present exactly once");
@@ -469,14 +469,14 @@ int main() {
         const auto lines = read_lines(path);
         std::set<std::string> actual_lines(lines.begin(), lines.end());
         bool all_valid_json = true;
-        bool all_schema_v3 = true;
+        bool all_schema_v4 = true;
         bool no_raw_controls = true;
         for (const auto &line : lines) {
             if (line.empty() || line.front() != '{' || line.back() != '}') {
                 all_valid_json = false;
             }
-            if (line.find("\"schema_version\":3") == std::string::npos) {
-                all_schema_v3 = false;
+            if (line.find("\"schema_version\":4") == std::string::npos) {
+                all_schema_v4 = false;
             }
             if (has_raw_control_character(line)) {
                 no_raw_controls = false;
@@ -486,8 +486,8 @@ int main() {
                        "concurrent log file has exactly 200 lines");
         HPOEA_V2_CHECK(runner, all_valid_json,
                        "all concurrent log lines are JSON object-shaped");
-        HPOEA_V2_CHECK(runner, all_schema_v3,
-                       "all concurrent log lines include schema_version 3");
+        HPOEA_V2_CHECK(runner, all_schema_v4,
+                       "all concurrent log lines include schema_version 4");
         HPOEA_V2_CHECK(runner, no_raw_controls,
                        "all concurrent log lines avoid raw control characters");
         HPOEA_V2_CHECK(runner, actual_lines.size() == expected_lines.size(),

@@ -241,11 +241,11 @@ int main() {
         fevals_budget.function_evaluations = 100u;
         auto result = optimizer.optimize(factory, problem, fevals_budget, {}, 123UL);
         HPOEA_V2_CHECK(runner, result.status == hpoea::core::RunStatus::Success,
-                       "budget-driven random search succeeds");
+                       "default sample_count with fevals budget succeeds");
         HPOEA_V2_CHECK(runner, result.trials.size() == 100u,
                        "default sample_count draws planned samples from the fevals budget");
         HPOEA_V2_CHECK(runner, result.optimizer_usage.objective_calls == 100u,
-                       "budget-driven objective_calls matches trials");
+                       "objective_calls matches trials");
 
         auto unbudgeted = optimizer.optimize(factory, problem, {}, {}, 123UL);
         HPOEA_V2_CHECK(runner, unbudgeted.status == hpoea::core::RunStatus::InvalidConfiguration,

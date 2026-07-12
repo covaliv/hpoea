@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <pagmo/population.hpp>
@@ -46,7 +47,8 @@ make_hyper_context(const core::IEvolutionaryAlgorithmFactory &factory,
 struct HyperEvolveOutcome {
     std::size_t iterations{0};
     core::ParameterSet effective_parameters;  // configured params with control value clamped to budget
-    std::string starved_message;  // non-empty when budget too small for any evolve so not Success
+    // non empty when budget too small for any evolve so not Success
+    std::string starved_message;
 };
 
 inline core::HyperparameterOptimizationResult fill_hyper_result(
@@ -61,8 +63,8 @@ inline core::HyperparameterOptimizationResult fill_hyper_result(
     }
 
     // never report Success on an all-failed run
-    // mirrors random_search_optimizer.cpp
-    if (auto best = ctx.get_best_trial(); best && is_selectable_trial(*best)) {
+    // same rule as random_search_optimizer.cpp
+    if (auto best = ctx.get_best_trial(); best && core::is_selectable_trial(*best)) {
         result.status = core::RunStatus::Success;
         result.best_parameters = best->parameters;
         result.best_objective = best->optimization_result.best_fitness;
@@ -85,9 +87,11 @@ inline core::HyperparameterOptimizationResult fill_hyper_result(
 
     // zero outer iterations did no real work despite initial pop
     // not Success
-    if (!outcome.starved_message.empty() && result.status == core::RunStatus::Success) {
+    if (!outcome.starved_message.empty() &&
+        (result.status == core::RunStatus::Success || result.trials.empty())) {
         result.status = core::RunStatus::BudgetExceeded;
         result.message = std::move(outcome.starved_message);
+        result.error_info.reset();
     }
 
     result.optimizer_usage.wall_time =
@@ -96,6 +100,26 @@ inline core::HyperparameterOptimizationResult fill_hyper_result(
     result.optimizer_usage.objective_calls = ctx.get_evaluations();
     result.effective_optimizer_parameters = std::move(outcome.effective_parameters);
     return result;
+}
+
+// pop construction costs one obj call per member
+[[nodiscard]] inline bool starves_initial_population(const core::Budget &optimizer_budget,
+                                                     std::size_t population_size) {
+    return optimizer_budget.function_evaluations.has_value() &&
+           *optimizer_budget.function_evaluations < population_size;
+}
+
+[[nodiscard]] inline HyperEvolveOutcome starved_outcome(const core::ParameterSet &configured,
+                                                        const char *control_key,
+                                                        std::size_t needed,
+                                                        const char *what) {
+    HyperEvolveOutcome outcome;
+    outcome.effective_parameters = configured;
+    outcome.effective_parameters.insert_or_assign(control_key, std::int64_t{0});
+    outcome.starved_message = "optimizer budget insufficient for the " + std::string{what} +
+                              "; minimum " + std::to_string(needed) +
+                              (needed == 1 ? " evaluation required" : " evaluations required");
+    return outcome;
 }
 
 // main entry point for running a hyper-optimization loop.
@@ -160,7 +184,7 @@ core::HyperparameterOptimizationResult run_hyper_optimization(
         const auto end_time = std::chrono::steady_clock::now();
         result.optimizer_usage.wall_time =
             std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        // recover evaluations done before the throw so a crashed run still counts them
+        // recover evals done before throw so crashed run still counts them
         if (ctx) {
             result.optimizer_usage.objective_calls = ctx->get_evaluations();
         }
@@ -176,7 +200,7 @@ core::HyperparameterOptimizationResult run_hyper_optimization(
     // pick the best selectable one
     if (ctx && !ctx->trials->empty() && result.trials.empty()) {
         result.trials = std::move(*ctx->trials);
-        if (auto best = ctx->get_best_trial(); best && is_selectable_trial(*best)) {
+        if (auto best = ctx->get_best_trial(); best && core::is_selectable_trial(*best)) {
             result.best_parameters = best->parameters;
             result.best_objective = best->optimization_result.best_fitness;
         }

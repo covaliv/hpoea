@@ -382,13 +382,21 @@ int main() {
                    "rerun keeps the planned run file");
     HPOEA_V2_CHECK(runner, contains(cleanup_result.stdout_text, "removed stale output"),
                    "rerun reports the removed stale file");
-    HPOEA_V2_CHECK(runner, !std::filesystem::exists(orphan_dir),
-                   "rerun removes orphan experiment dirs holding only run files");
+    HPOEA_V2_CHECK(runner, std::filesystem::exists(orphan_dir),
+                   "rerun keeps orphan experiment dirs without --prune");
     HPOEA_V2_CHECK(runner, std::filesystem::exists(foreign_dir / "notes.txt"),
                    "rerun keeps files that are not run outputs");
     HPOEA_V2_CHECK(runner, contains(cleanup_result.stderr_text,
                                     "stale experiment output not in current plan"),
                    "rerun warns about leftover experiment directories");
+
+    const auto prune_result = run_cli({"run", config_path.string(), "--prune"}, work_dir);
+    HPOEA_V2_CHECK(runner, prune_result.exit_code == 0,
+                   "prune rerun exits successfully");
+    HPOEA_V2_CHECK(runner, !std::filesystem::exists(orphan_dir),
+                   "--prune removes orphan experiment dirs holding only run files");
+    HPOEA_V2_CHECK(runner, std::filesystem::exists(foreign_dir / "notes.txt"),
+                   "--prune keeps files that are not run outputs");
 
     {
         // starved run leaves no empty output file
@@ -481,6 +489,20 @@ int main() {
             matrix_output_dir / "experiments" / "rosenbrock-de-nm" / "run-000.jsonl");
         HPOEA_V2_CHECK(runner, contains(nm_log, "\"implementation\":\"nlopt::neldermead\""),
                        "matrix run logs the nelder_mead optimizer");
+
+        const auto summary_path = matrix_output_dir / "summary.jsonl";
+        HPOEA_V2_CHECK(runner, contains(read_file(summary_path),
+                                        "\"run_id\":\"rastrigin_sade_sa__rep000\""),
+                       "run writes a summary row per cell");
+
+        const auto only_result = run_cli(
+            {"run", matrix_config_path.string(), "--only", "rosenbrock_de_nm"}, work_dir);
+        HPOEA_V2_CHECK(runner, only_result.exit_code == 0 &&
+                                   !contains(only_result.stdout_text, "ran: rastrigin_sade_sa__rep000"),
+                       "--only runs just the named experiment");
+        HPOEA_V2_CHECK(runner, contains(read_file(summary_path),
+                                        "\"run_id\":\"rastrigin_sade_sa__rep000\""),
+                       "--only keeps the other cells' summary rows");
     }
 
     {
@@ -523,6 +545,11 @@ int main() {
             degraded_output_dir / "experiments" / "degraded" / "run-000.jsonl");
         HPOEA_V2_CHECK(runner, contains(degraded_log, "\"status\":\"budget_exceeded\""),
                        "degraded run keeps its records");
+
+        const auto strict_result = run_cli(
+            {"run", degraded_config_path.string(), "--strict"}, work_dir);
+        HPOEA_V2_CHECK(runner, strict_result.exit_code == 1,
+                       "--strict exits nonzero for a degraded cell");
     }
 
     std::filesystem::remove_all(work_dir);

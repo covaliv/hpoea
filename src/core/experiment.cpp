@@ -1,5 +1,6 @@
 #include "hpoea/core/experiment.hpp"
 
+#include "hpoea/core/error_classification.hpp"
 #include "hpoea/core/hyperparameter_optimizer.hpp"
 #include "hpoea/core/logging.hpp"
 #include "hpoea/core/seeding.hpp"
@@ -195,6 +196,48 @@ ParameterSet select_logged_parameters(const HyperparameterTrialRecord &trial_rec
     return trial_record.parameters;
 }
 
+// distinct stream from tuning trial seeds
+constexpr std::uint64_t validation_stream_salt = 0x0a11da7e5eed5a17ULL;
+
+bool has_selectable_trial(const hpoea::core::HyperparameterOptimizationResult &result) {
+    return std::any_of(result.trials.begin(), result.trials.end(),
+                       hpoea::core::is_selectable_trial);
+}
+
+void run_validation_repeats(const ExperimentConfig &config,
+                            const IEvolutionaryAlgorithmFactory &active_algorithm_factory,
+                            const IProblem &problem,
+                            unsigned long optimizer_seed,
+                            hpoea::core::HyperparameterOptimizationResult &optimization_result) {
+    // selectable winner validated even when cell ended budget_exceeded
+    if (config.validation_repeats == 0 ||
+        optimization_result.best_parameters.empty() ||
+        !has_selectable_trial(optimization_result)) {
+        return;
+    }
+
+    const auto validation_base =
+        hpoea::core::splitmix64(static_cast<std::uint64_t>(optimizer_seed) ^ validation_stream_salt);
+    optimization_result.validation_runs.reserve(config.validation_repeats);
+    for (std::size_t i = 0; i < config.validation_repeats; ++i) {
+        const auto validation_seed =
+            static_cast<unsigned long>(hpoea::core::derive_stream_seed(validation_base, i));
+        hpoea::core::OptimizationResult validation_run;
+        try {
+            auto algorithm = active_algorithm_factory.create();
+            algorithm->configure(optimization_result.best_parameters);
+            validation_run = algorithm->run(problem, config.algorithm_budget, validation_seed);
+        } catch (const std::exception &ex) {
+            const auto classified = hpoea::core::classify_exception(ex);
+            validation_run.status = classified.status;
+            validation_run.error_info = classified.error_info;
+            validation_run.message = ex.what();
+        }
+        validation_run.seed = validation_seed;
+        optimization_result.validation_runs.push_back(std::move(validation_run));
+    }
+}
+
 RunRecord build_run_record(const ExperimentConfig &config,
                            const IProblem &problem,
                            const AlgorithmIdentity &algorithm_identity,
@@ -252,6 +295,8 @@ void run_trials(
             optimization_result.effective_optimizer_parameters = optimizer_parameters;
         }
 
+        run_validation_repeats(config, active_algorithm_factory, problem, optimizer_seed, optimization_result);
+
         optimization_results[trial] = std::move(optimization_result);
 
         {
@@ -265,6 +310,18 @@ void run_trials(
                     optimizer_parameters,
                     optimizer_seed,
                     trial_record));
+            }
+            for (const auto &validation_run : optimization_results[trial].validation_runs) {
+                auto log_record = build_run_record(
+                    config,
+                    problem,
+                    active_algorithm_factory.identity(),
+                    worker_optimizer.identity(),
+                    optimizer_parameters,
+                    optimizer_seed,
+                    {optimization_results[trial].best_parameters, validation_run});
+                log_record.phase = hpoea::core::RunPhase::Validation;
+                logger.log(log_record);
             }
         }
     }

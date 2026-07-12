@@ -66,7 +66,7 @@ int main() {
     {
         // every validation/construction rule that must fail loud or succeed
         // one row per rule
-        // the fn carries the full setup so shapes can differ
+        // fn carries full setup so shapes can differ
         const auto params = make_space();
         struct Case {
             const char *label;
